@@ -249,7 +249,45 @@
     };
   }
 
+  /**
+   * A persistent watermark: the workspace logo or a line of text, pinned to a
+   * corner for the whole video. Separate from annotations because it is not
+   * timed and belongs to the workspace, not the recording.
+   */
+  function attachWatermark(player, watermark) {
+    if (!watermark || watermark.mode === 'none') { return null; }
+
+    var corners = {
+      'top-left': { top: '3.5%', left: '3%' },
+      'top-right': { top: '3.5%', right: '3%' },
+      'bottom-left': { bottom: '13%', left: '3%' },
+      'bottom-right': { bottom: '13%', right: '3%' }
+    };
+    var position = corners[watermark.position] || corners['bottom-right'];
+
+    var content = watermark.mode === 'logo' && watermark.logo
+      ? el('img', { src: watermark.logo, alt: '', style: { height: '100%', width: 'auto', display: 'block' } })
+      : el('span', {
+          text: watermark.text || '',
+          style: {
+            font: '600 clamp(10px, 1.6vw, 16px)/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif',
+            color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,.7)', whiteSpace: 'nowrap'
+          }
+        });
+
+    var node = el('div.watermark', {
+      style: Object.assign({
+        position: 'absolute', zIndex: '8', pointerEvents: 'none',
+        opacity: '.72', maxWidth: '28%', height: watermark.mode === 'logo' ? '9%' : 'auto'
+      }, position)
+    }, content);
+
+    player.root.insertBefore(node, player.root.querySelector('.player-controls'));
+    return node;
+  }
+
   ML.Overlays = {
+    attachWatermark: attachWatermark,
     attach: attach,
     build: build,
     contentRect: contentRect,

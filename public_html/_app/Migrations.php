@@ -10,7 +10,7 @@
 final class Migrations
 {
     /** Bump this when adding a migration below. */
-    public const VERSION = 5;
+    public const VERSION = 6;
 
     public static function run(): void
     {
@@ -32,11 +32,49 @@ final class Migrations
             if ($current < 5) {
                 self::v5ApiTokens();
             }
+            if ($current < 6) {
+                self::v6Engagement();
+            }
             Config::putSetting('schema_version', (string)self::VERSION);
         } catch (Throwable $e) {
             // A failed migration must not take the whole app down; log and carry
             // on so the rest of the site still works.
             error_log('[myloom][migrate] ' . $e->getMessage());
+        }
+    }
+
+    /** v6 — link-click tracking, sign-in gate, Slack alerts and watermarks. */
+    private static function v6Engagement(): void
+    {
+        self::addColumn('videos', 'require_login', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER `require_email`');
+        self::addColumn('workspaces', 'slack_webhook', 'VARCHAR(500) DEFAULT NULL');
+        self::addColumn('workspaces', 'slack_events', "VARCHAR(120) NOT NULL DEFAULT 'comment'");
+        self::addColumn('workspaces', 'watermark_mode', "VARCHAR(12) NOT NULL DEFAULT 'none'");
+        self::addColumn('workspaces', 'watermark_text', 'VARCHAR(120) DEFAULT NULL');
+        self::addColumn('workspaces', 'watermark_position', "VARCHAR(16) NOT NULL DEFAULT 'bottom-right'");
+
+        Db::pdo()->exec(
+            'CREATE TABLE IF NOT EXISTS `link_clicks` (
+              `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `video_id`      INT UNSIGNED NOT NULL,
+              `annotation_id` INT UNSIGNED DEFAULT NULL,
+              `kind`          VARCHAR(16) NOT NULL DEFAULT "cta",
+              `url`           VARCHAR(500) DEFAULT NULL,
+              `session_key`   VARCHAR(64) DEFAULT NULL,
+              `at_time`       DECIMAL(10,2) DEFAULT NULL,
+              `created_at`    DATETIME NOT NULL,
+              PRIMARY KEY (`id`),
+              KEY `idx_click_video` (`video_id`,`created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+        );
+    }
+
+    /** Add a column only when it is missing, so migrations can be re-run. */
+    private static function addColumn(string $table, string $column, string $definition): void
+    {
+        $exists = Db::one("SHOW COLUMNS FROM `{$table}` LIKE " . Db::pdo()->quote($column));
+        if (!$exists) {
+            Db::pdo()->exec("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
         }
     }
 

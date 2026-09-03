@@ -43,6 +43,15 @@
     clear(root);
     if (gate === 'password') { return renderPasswordGate(info); }
     if (gate === 'email') { return renderEmailGate(info); }
+    if (gate === 'login') {
+      return root.appendChild(el('div.card.pad.gate-card', {}, [
+        el('div.empty-icon', {}, '🔑'),
+        el('h2', { text: (info && info.title) || 'Sign in to watch' }),
+        el('p.small.muted', {}, 'The owner has limited this video to signed-in people.'),
+        el('a.btn.primary.block.mt', { href: (boot.baseUrl || '') + '/login' }, 'Sign in'),
+        el('a.btn.block.mt', { href: (boot.baseUrl || '') + '/signup' }, 'Create an account')
+      ]));
+    }
     if (gate === 'expired') {
       return root.appendChild(ML.emptyState('⌛', 'This link has expired',
         'Ask the sender for a new one.'));
@@ -106,6 +115,7 @@
     var holder = el('div', { style: { width: '100%', height: '100%' } });
     root.appendChild(holder);
     buildPlayer(holder, { autoplay: false });
+    ML.Overlays.attachWatermark(player, video.watermark);
     root.appendChild(el('a', {
       href: video.share_url, target: '_blank', rel: 'noopener',
       style: {
@@ -194,7 +204,10 @@
         actions,
         video.cta ? el('div.cta-banner', {}, [
           el('strong', { text: video.title }),
-          el('a.btn.primary', { href: video.cta.url, target: '_blank', rel: 'noopener' }, video.cta.label)
+          el('a.btn.primary', {
+            href: video.cta.url, target: '_blank', rel: 'noopener',
+            onclick: function () { trackClick('cta', video.cta.url, 0); }
+          }, video.cta.label)
         ]) : null,
         video.summary ? el('div.card.pad.mt', {}, [el('h3', {}, 'Summary'), el('p.small', { text: video.summary })]) : null,
         video.description ? el('div.card.pad.mt', {}, [el('h3', {}, 'Description'), el('p.small', { text: video.description })]) : null
@@ -251,6 +264,14 @@
     });
 
     ML.Overlays.attach(player, video.annotations || []);
+    ML.Overlays.attachWatermark(player, video.watermark);
+
+    // Record clicks on link overlays so the owner can see if the CTA works.
+    player.root.addEventListener('click', function (event) {
+      var link = event.target.closest && event.target.closest('a.ov-link');
+      if (!link) { return; }
+      trackClick('overlay', link.getAttribute('href'), link.dataset.annotationId);
+    });
 
     var tracks = video.caption_tracks || [];
     if (tracks.length) {
@@ -270,6 +291,14 @@
         }
       }).catch(function () { /* optional */ });
     }
+  }
+
+  function trackClick(kind, url, annotationId) {
+    ML.post('watch/click', query({
+      kind: kind, url: url || '',
+      annotation_id: annotationId ? Number(annotationId) : 0,
+      at_time: player ? player.absoluteTime() : 0
+    })).catch(function () { /* never block the click */ });
   }
 
   function countView() {

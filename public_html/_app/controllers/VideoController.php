@@ -35,6 +35,7 @@ final class VideoController
             'allow_reactions'=> (int)$v['allow_reactions'] === 1,
             'allow_download' => (int)$v['allow_download'] === 1,
             'require_email'  => (int)$v['require_email'] === 1,
+            'require_login'  => (int)($v['require_login'] ?? 0) === 1,
             'trim_start'     => (float)$v['trim_start'],
             'trim_end'       => $v['trim_end'] !== null ? (float)$v['trim_end'] : null,
             'segments'       => $segments,
@@ -168,6 +169,18 @@ final class VideoController
         );
         $data['has_transcript'] = (bool)Db::value('SELECT id FROM transcripts WHERE video_id = ? LIMIT 1', [(int)$video['id']]);
         $data['annotations'] = AnnotationController::forVideo((int)$video['id']);
+
+        $ws = Db::one('SELECT name, logo, watermark_mode, watermark_text, watermark_position
+                       FROM workspaces WHERE id = ?', [(int)$video['workspace_id']]);
+        $data['watermark'] = ($ws && ($ws['watermark_mode'] ?? 'none') !== 'none')
+            ? [
+                'mode'     => $ws['watermark_mode'],
+                'text'     => $ws['watermark_mode'] === 'text' ? ($ws['watermark_text'] ?: $ws['name']) : null,
+                'logo'     => $ws['watermark_mode'] === 'logo' && !empty($ws['logo'])
+                    ? Util::url('file.php?a=' . rawurlencode((string)$ws['logo'])) : null,
+                'position' => $ws['watermark_position'] ?? 'bottom-right',
+              ]
+            : null;
         Http::ok(['video' => $data]);
     }
 
@@ -271,7 +284,7 @@ final class VideoController
                 $data['visibility'] = $vis;
             }
         }
-        foreach (['allow_comments', 'allow_reactions', 'allow_download', 'require_email'] as $flag) {
+        foreach (['allow_comments', 'allow_reactions', 'allow_download', 'require_email', 'require_login'] as $flag) {
             if (Http::input($flag) !== null) {
                 $data[$flag] = Http::bool($flag) ? 1 : 0;
             }
@@ -398,7 +411,7 @@ final class VideoController
         Storage::delete($video['thumbnail'] ?? null);
         Db::transaction(static function () use ($id, $video) {
             foreach (['comments', 'reactions', 'views', 'engagement', 'share_links', 'transcripts',
-                      'video_chapters', 'annotations', 'uploads', 'notifications'] as $table) {
+                      'video_chapters', 'annotations', 'link_clicks', 'uploads', 'notifications'] as $table) {
                 Db::run("DELETE FROM `{$table}` WHERE video_id = ?", [$id]);
             }
             Db::run('UPDATE workspaces SET storage_used = GREATEST(0, CAST(storage_used AS SIGNED) - ?) WHERE id = ?',

@@ -185,6 +185,7 @@
         format: format,
         quality: quality,
         annotations: burn ? annotations : [],
+        watermark: burn ? video.watermark : null,
         segments: segments,
         trimStart: Number(video.trim_start) || 0,
         trimEnd: video.trim_end && Number(video.trim_end) > 0 ? Number(video.trim_end) : null,
@@ -256,6 +257,22 @@
       var elapsedBefore = 0;   // playing time already encoded, for progress
       var total = 0;
       var switching = false;
+      var watermark = null;
+
+      // Preload the logo so the very first frame already carries the mark.
+      if (options.watermark && options.watermark.mode !== 'none') {
+        watermark = {
+          mode: options.watermark.mode,
+          text: options.watermark.text,
+          position: options.watermark.position,
+          image: null
+        };
+        if (options.watermark.mode === 'logo' && options.watermark.logo) {
+          watermark.image = new Image();
+          watermark.image.crossOrigin = 'anonymous';
+          watermark.image.src = options.watermark.logo;
+        }
+      }
 
       var fail = function (error) {
         cleanup();
@@ -391,7 +408,7 @@
 
         var segment = segments[segmentIndex];
         var t = source.currentTime;
-        drawFrame(ctx, canvas, source, options.annotations, t);
+        drawFrame(ctx, canvas, source, options.annotations, t, watermark);
 
         if (options.onProgress) {
           var done = elapsedBefore + Math.max(0, Math.min(segment.end - segment.start, t - segment.start));
@@ -411,7 +428,7 @@
           try { if (recorder.state === 'recording') { recorder.pause(); } } catch (e) { /* ignore */ }
           source.pause();
           seekTo(segments[segmentIndex].start, function () {
-            drawFrame(ctx, canvas, source, options.annotations, source.currentTime);
+            drawFrame(ctx, canvas, source, options.annotations, source.currentTime, watermark);
             try { if (recorder.state === 'paused') { recorder.resume(); } } catch (e) { /* ignore */ }
             source.play().then(function () { switching = false; }).catch(function (error) {
               fail(new Error('Playback stalled between segments: ' + error.message));
@@ -436,17 +453,54 @@
 
   /* --- Canvas rendering of annotations ------------------------------------ */
 
-  function drawFrame(ctx, canvas, source, annotations, t) {
+  function drawFrame(ctx, canvas, source, annotations, t, watermark) {
     var w = canvas.width, h = canvas.height;
     ctx.filter = 'none';
     ctx.globalAlpha = 1;
     ctx.drawImage(source, 0, 0, w, h);
 
-    if (!annotations || !annotations.length) { return; }
-    annotations
-      .filter(function (a) { return ML.Overlays.isActive(a, t); })
-      .sort(function (a, b) { return (a.z_index || 0) - (b.z_index || 0); })
-      .forEach(function (a) { drawAnnotation(ctx, canvas, source, a); });
+    if (annotations && annotations.length) {
+      annotations
+        .filter(function (a) { return ML.Overlays.isActive(a, t); })
+        .sort(function (a, b) { return (a.z_index || 0) - (b.z_index || 0); })
+        .forEach(function (a) { drawAnnotation(ctx, canvas, source, a); });
+    }
+    if (watermark) { drawWatermark(ctx, canvas, watermark); }
+  }
+
+  /** Burn the workspace watermark into the frame, matching the player's corner. */
+  function drawWatermark(ctx, canvas, watermark) {
+    var w = canvas.width, h = canvas.height;
+    var pad = Math.round(Math.min(w, h) * 0.03);
+    ctx.save();
+    ctx.globalAlpha = 0.72;
+
+    if (watermark.mode === 'logo' && watermark.image && watermark.image.complete && watermark.image.naturalWidth) {
+      var height = h * 0.09;
+      var width = height * (watermark.image.naturalWidth / watermark.image.naturalHeight);
+      var pos = corner(watermark.position, w, h, width, height, pad);
+      ctx.drawImage(watermark.image, pos.x, pos.y, width, height);
+    } else if (watermark.text) {
+      var fontPx = Math.max(11, Math.round(h * 0.032));
+      ctx.font = '600 ' + fontPx + 'px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif';
+      ctx.textBaseline = 'top';
+      var metrics = ctx.measureText(watermark.text);
+      var box = corner(watermark.position, w, h, metrics.width, fontPx * 1.2, pad);
+      ctx.fillStyle = '#fff';
+      ctx.shadowColor = 'rgba(0,0,0,.7)';
+      ctx.shadowBlur = Math.max(2, fontPx * 0.2);
+      ctx.fillText(watermark.text, box.x, box.y);
+    }
+    ctx.restore();
+  }
+
+  function corner(position, w, h, itemW, itemH, pad) {
+    var right = String(position || '').indexOf('right') !== -1;
+    var bottom = String(position || '').indexOf('bottom') !== -1;
+    return {
+      x: right ? w - itemW - pad : pad,
+      y: bottom ? h - itemH - pad : pad
+    };
   }
 
   function drawAnnotation(ctx, canvas, source, a) {
@@ -689,6 +743,7 @@
         format: format,
         quality: 'source',
         annotations: annotations,
+        watermark: video.watermark || null,
         segments: Array.isArray(video.segments) ? video.segments : null,
         trimStart: Number(video.trim_start) || 0,
         trimEnd: video.trim_end && Number(video.trim_end) > 0 ? Number(video.trim_end) : null,

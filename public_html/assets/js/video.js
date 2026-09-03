@@ -188,6 +188,7 @@
         chapters: video.chapters || []
       });
       ML.Overlays.attach(player, video.annotations || []);
+      ML.Overlays.attachWatermark(player, video.watermark);
       loadCaptionsInto(player);
 
       ML.CommentsPanel(commentsNode, {
@@ -368,7 +369,9 @@
             Views.stat('Watch time', totals.watch_human),
             Views.stat('Avg. completion', totals.avg_percent + '%'),
             Views.stat('Finished', totals.completions),
-            Views.stat('Engagement', totals.comments + totals.reactions, totals.comments + ' comments · ' + totals.reactions + ' reactions')
+            Views.stat('Engagement', totals.comments + totals.reactions, totals.comments + ' comments · ' + totals.reactions + ' reactions'),
+            Views.stat('Link clicks', totals.cta_clicks || 0,
+              (totals.cta_clickers || 0) + ' of ' + totals.uniques + ' viewers clicked')
           ]),
 
           el('div.card.mt-lg', {}, [
@@ -437,6 +440,22 @@
                 : el('tr', {}, el('td', { colspan: '6' }, el('span.muted', {}, 'No views recorded yet.'))))
             ]))
           ]),
+
+          (data.clicks && data.clicks.length) ? el('div.card.mt-lg', {}, [
+            el('div.card-head', {}, el('strong', {}, 'Links clicked')),
+            el('div.table-wrap', {}, el('table.data', {}, [
+              el('thead', {}, el('tr', {}, [
+                el('th', {}, 'Destination'), el('th', {}, 'Where'), el('th.right', {}, 'Clicks')
+              ])),
+              el('tbody', {}, data.clicks.map(function (click) {
+                return el('tr', {}, [
+                  el('td.truncate', { style: { maxWidth: '360px' }, text: click.url }),
+                  el('td', { text: click.kind === 'cta' ? 'CTA banner' : 'On-video link' }),
+                  el('td.right', { text: String(click.count) })
+                ]);
+              }))
+            ]))
+          ]) : null,
 
           data.devices.length ? el('div.card.mt-lg', {}, [
             el('div.card-head', {}, el('strong', {}, 'Devices & sources')),
@@ -857,6 +876,7 @@
       var reactions = el('input', { type: 'checkbox', checked: video.allow_reactions });
       var download = el('input', { type: 'checkbox', checked: video.allow_download });
       var requireEmail = el('input', { type: 'checkbox', checked: video.require_email });
+      var requireLogin = el('input', { type: 'checkbox', checked: video.require_login });
       var ctaLabel = el('input', { type: 'text', value: video.cta_label || '', placeholder: 'Book a call' });
       var ctaUrl = el('input', { type: 'url', value: video.cta_url || '', placeholder: 'https://…' });
       var spaceSelect = el('select', {}, [el('option', { value: '0' }, 'No folder')]
@@ -880,7 +900,10 @@
           video.has_password ? el('label.check', {}, [clearPassword, el('span', {}, 'Remove the password')]) : null,
           el('label.field', {}, [el('span', {}, 'Link expires'), expires, el('div.hint', {}, 'Leave blank for no expiry.')]),
           el('label.check', {}, [requireEmail, el('span', {}, ['Ask viewers for their email before watching',
-            el('span.check-sub', {}, 'Captures leads and names them in your analytics.')])])
+            el('span.check-sub', {}, 'Captures leads and names them in your analytics.')])]),
+          el('label.check', {}, [requireLogin, el('span', {}, ['Require viewers to sign in',
+            el('span.check-sub', {}, 'Only people with an account on this site can watch. '
+              + 'Overrides the email prompt.')])])
         ]),
         el('div.section', {}, [
           el('h3', {}, 'Viewer experience'),
@@ -907,6 +930,7 @@
                 allow_reactions: reactions.checked,
                 allow_download: download.checked,
                 require_email: requireEmail.checked,
+                require_login: requireLogin.checked,
                 cta_label: ctaLabel.value,
                 cta_url: ctaUrl.value,
                 space_id: Number(spaceSelect.value)

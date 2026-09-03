@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS `workspaces` (
   `default_cta_label` VARCHAR(80) DEFAULT NULL,
   `default_cta_url`   VARCHAR(500) DEFAULT NULL,
   `storage_used`    BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  `slack_webhook`   VARCHAR(500) DEFAULT NULL,
+  `slack_events`    VARCHAR(120) NOT NULL DEFAULT 'comment',
+  `watermark_mode`  VARCHAR(12) NOT NULL DEFAULT 'none',
+  `watermark_text`  VARCHAR(120) DEFAULT NULL,
+  `watermark_position` VARCHAR(16) NOT NULL DEFAULT 'bottom-right',
   `created_at`      DATETIME NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_ws_slug` (`slug`),
@@ -107,6 +112,7 @@ CREATE TABLE IF NOT EXISTS `videos` (
   `allow_reactions` TINYINT(1) NOT NULL DEFAULT 1,
   `allow_download`  TINYINT(1) NOT NULL DEFAULT 1,
   `require_email`   TINYINT(1) NOT NULL DEFAULT 0,
+  `require_login`   TINYINT(1) NOT NULL DEFAULT 0,
   `trim_start`    DECIMAL(10,2) NOT NULL DEFAULT 0,
   `trim_end`      DECIMAL(10,2) DEFAULT NULL,
   `segments`      TEXT DEFAULT NULL,
@@ -307,6 +313,19 @@ CREATE TABLE IF NOT EXISTS `api_tokens` (
               PRIMARY KEY (`id`),
               UNIQUE KEY `uniq_token_hash` (`token_hash`),
               KEY `idx_token_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `link_clicks` (
+              `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `video_id`      INT UNSIGNED NOT NULL,
+              `annotation_id` INT UNSIGNED DEFAULT NULL,
+              `kind`          VARCHAR(16) NOT NULL DEFAULT "cta",
+              `url`           VARCHAR(500) DEFAULT NULL,
+              `session_key`   VARCHAR(64) DEFAULT NULL,
+              `at_time`       DECIMAL(10,2) DEFAULT NULL,
+              `created_at`    DATETIME NOT NULL,
+              PRIMARY KEY (`id`),
+              KEY `idx_click_video` (`video_id`,`created_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -231,6 +231,14 @@ final class CommentController
             'body'       => mb_substr($author . ' commented on "' . $video['title'] . '"', 0, 500),
             'created_at' => Util::now(),
         ]);
+        Slack::notify(
+            (int)$video['workspace_id'],
+            'comment',
+            '*' . $author . '* commented on *' . $video['title'] . "*\n>" .
+                str_replace("\n", ' ', mb_substr($body, 0, 300)),
+            ['url' => Util::url('v/' . $video['uid']), 'button' => 'Reply']
+        );
+
         if ((int)$owner['notify_comment'] === 1) {
             Mailer::send(
                 (string)$owner['email'],

@@ -34,6 +34,8 @@ require_once APP_DIR . '/Storage.php';
 require_once APP_DIR . '/Permissions.php';
 require_once APP_DIR . '/Mailer.php';
 require_once APP_DIR . '/Migrations.php';
+require_once APP_DIR . '/Segments.php';
+require_once APP_DIR . '/Slack.php';
 
 /**
  * Controllers reference each other freely (AuthController needs WorkspaceController,

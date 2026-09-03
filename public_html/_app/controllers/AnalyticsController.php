@@ -77,12 +77,24 @@ final class AnalyticsController
                 'completions'   => (int)($totals['completions'] ?? 0),
                 'comments'      => (int)Db::value('SELECT COUNT(*) FROM comments WHERE video_id = ? AND deleted_at IS NULL', [$id]),
                 'reactions'     => (int)Db::value('SELECT COUNT(*) FROM reactions WHERE video_id = ?', [$id]),
+                'cta_clicks'    => (int)Db::value('SELECT COUNT(*) FROM link_clicks WHERE video_id = ?', [$id]),
+                'cta_clickers'  => (int)Db::value(
+                    'SELECT COUNT(DISTINCT session_key) FROM link_clicks WHERE video_id = ?', [$id]),
             ],
             'viewers'    => $viewers,
             'engagement' => $engagement,
             'daily'      => array_map(static fn(array $d) => ['day' => $d['day'], 'views' => (int)$d['n']], $daily),
             'devices'    => array_map(static fn(array $d) => ['device' => $d['device'] ?: 'unknown', 'count' => (int)$d['n']], $devices),
             'referrers'  => array_map(static fn(array $r) => ['source' => $r['source'], 'count' => (int)$r['n']], $referrers),
+            'clicks'     => array_map(static fn(array $c) => [
+                'url'   => $c['url'],
+                'kind'  => $c['kind'],
+                'count' => (int)$c['n'],
+            ], Db::all(
+                'SELECT COALESCE(url, "(no link)") AS url, kind, COUNT(*) AS n
+                 FROM link_clicks WHERE video_id = ? GROUP BY url, kind ORDER BY n DESC LIMIT 12',
+                [$id]
+            )),
         ]);
     }
 

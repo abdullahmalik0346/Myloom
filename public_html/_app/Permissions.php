@@ -108,6 +108,12 @@ final class Permissions
             return [false, 'password'];
         }
 
+        // A sign-in requirement outranks the email gate: there is no point
+        // collecting an address from someone who then has to log in anyway.
+        if (!empty($video['require_login']) && (int)$video['require_login'] === 1 && !$user) {
+            return [false, 'login'];
+        }
+
         if ((int)$video['require_email'] === 1 && !$user && !Auth::guestIdentity()) {
             return [false, 'email'];
         }

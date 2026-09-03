@@ -29,6 +29,7 @@ not do at all. Loom's paid tiers (Business / Business + AI) are the reference.
 | Password-protected videos | ✅ | Per video and, separately, per share link |
 | Link expiry dates | ✅ | Per video and per share link |
 | Viewer email gate (lead capture) | ✅ | Captured names/emails appear in analytics and the CSV |
+| Require viewers to sign in | ✅ | Only people with an account can watch; the media endpoint enforces it too |
 | Disable downloads / comments | ✅ | Per video, and downloads can be disabled per link |
 | Private / team / public visibility | ✅ | Plus "anyone with the link" |
 | Custom thumbnails | ✅ | Upload an image or grab the current frame |
@@ -63,6 +64,7 @@ not do at all. Loom's paid tiers (Business / Business + AI) are the reference.
 | Resolve comments | ✅ | Owner only |
 | Email + in-app notifications | ✅ | Per-event preferences per user |
 | Call-to-action button | ✅ | Per video, with a workspace-wide default |
+| CTA and link click tracking | ✅ | Clicks on the CTA banner and on-video links are counted per destination in analytics |
 
 ## Transcription and AI
 
@@ -130,10 +132,13 @@ apply, the original bytes are served instantly with no quality loss.
 | Roles and permissions | ✅ | Owner, admin, member, viewer |
 | Email invitations | ✅ | With a copyable link if mail is not configured |
 | Custom branding | ✅ | Logo, accent colour, and the "Powered by" line can be removed |
+| Watermark on every video | ✅ | Workspace logo or text, pinned to a corner — shown in the player and embeds, and burned in when you re-encode |
+| Slack notifications | ✅ | An Incoming Webhook posts comments and views to a channel; no app install |
 | Storage per workspace | ✅ | Tracked and displayed |
 | Video library search and filters | ✅ | Mine / shared / starred, sort, bulk move and delete |
 | Trash with restore | ✅ | |
-| Loom Record button in Slack, Gmail, Jira | ❌ | No third-party integrations |
+| Animated preview on hover | ✅ | Hovering a card plays the real file muted — no GIF to generate or store |
+| Loom Record button in Slack, Gmail, Jira | ❌ | Slack gets notifications, but there is no Record button inside Slack, Gmail or Jira |
 | API tokens for other tools | ✅ | Create and revoke per-token in Settings → Profile; only the hash is stored |
 | Salesforce / HubSpot sync | ❌ | |
 | Enterprise admin controls, audit log | ❌ | There is a basic instance admin panel |

@@ -256,6 +256,35 @@
       var ctaLabel = el('input', { type: 'text', value: ws.cta_label || '', placeholder: 'Book a demo', disabled: !canEdit });
       var ctaUrl = el('input', { type: 'url', value: ws.cta_url || '', placeholder: 'https://…', disabled: !canEdit });
 
+      var watermarkMode = el('select', { disabled: !canEdit }, [
+        el('option', { value: 'none' }, 'No watermark'),
+        el('option', { value: 'logo' }, 'Workspace logo'),
+        el('option', { value: 'text' }, 'Text')
+      ]);
+      watermarkMode.value = ws.watermark_mode || 'none';
+      var watermarkText = el('input', {
+        type: 'text', value: ws.watermark_text || '', placeholder: ws.name, disabled: !canEdit
+      });
+      var watermarkPosition = el('select', { disabled: !canEdit }, [
+        el('option', { value: 'bottom-right' }, 'Bottom right'),
+        el('option', { value: 'bottom-left' }, 'Bottom left'),
+        el('option', { value: 'top-right' }, 'Top right'),
+        el('option', { value: 'top-left' }, 'Top left')
+      ]);
+      watermarkPosition.value = ws.watermark_position || 'bottom-right';
+
+      var slackWebhook = el('input', {
+        type: 'url', value: '', disabled: !canEdit,
+        placeholder: ws.slack_connected ? '•••••••• saved' : 'https://hooks.slack.com/services/…'
+      });
+      var slackEvents = ws.slack_events || [];
+      var slackComment = el('input', {
+        type: 'checkbox', checked: slackEvents.indexOf('comment') !== -1, disabled: !canEdit
+      });
+      var slackView = el('input', {
+        type: 'checkbox', checked: slackEvents.indexOf('view') !== -1, disabled: !canEdit
+      });
+
       var logoPreview = ws.logo
         ? el('img', { src: ws.logo, alt: '', style: { maxHeight: '44px', borderRadius: '8px' } })
         : el('div.ws-logo', {}, ML.initials(ws.name));
@@ -303,6 +332,36 @@
             el('span.check-sub', {}, 'Your own logo is shown instead.')])])
         ]),
         el('div.section', {}, [
+          el('h3', {}, 'Watermark'),
+          el('p.hint', {}, 'Pinned to a corner of every video in this workspace — on the share page, '
+            + 'in embeds, and baked in when you re-encode.'),
+          el('label.field', {}, [el('span', {}, 'Show'), watermarkMode]),
+          el('label.field', {}, [el('span', {}, 'Text'), watermarkText,
+            el('div.hint', {}, 'Used when “Text” is selected. Leave blank to use the workspace name.')]),
+          el('label.field', {}, [el('span', {}, 'Corner'), watermarkPosition])
+        ]),
+        el('div.section', {}, [
+          el('h3', {}, 'Slack notifications'),
+          el('p.hint', {}, 'Paste an Incoming Webhook URL from Slack '
+            + '(Slack → Apps → Incoming Webhooks → Add to a channel). No app install needed.'),
+          el('label.field', {}, [el('span', {}, 'Webhook URL'), slackWebhook,
+            ws.slack_connected ? el('div.hint', {}, 'A webhook is saved. Clear the field to disconnect.') : null]),
+          el('p.hint', {}, 'Post to Slack when…'),
+          el('label.check', {}, [slackComment, el('span', {}, 'Someone comments')]),
+          el('label.check', {}, [slackView, el('span', {}, 'Someone watches a video')]),
+          ws.slack_connected ? el('button.btn.sm.mt', {
+            type: 'button',
+            onclick: function (event) {
+              var button = event.target;
+              button.disabled = true;
+              ML.post('workspaces/slack-test', {})
+                .then(function () { ML.toast('Test message sent to Slack', 'success'); })
+                .catch(ML.toastError)
+                .then(function () { button.disabled = false; });
+            }
+          }, 'Send a test message') : null
+        ]),
+        el('div.section', {}, [
           el('h3', {}, 'Storage'),
           el('p.small', { text: ws.storage_human + ' used by this workspace.' }),
           el('p.hint', {}, 'Recordings live in _storage on your server; free space is limited by your hosting plan.')
@@ -319,7 +378,17 @@
               cta_label: ctaLabel.value,
               cta_url: ctaUrl.value,
               logo_data: logoData || '',
-              remove_logo: removeLogo
+              remove_logo: removeLogo,
+              watermark_mode: watermarkMode.value,
+              watermark_text: watermarkText.value,
+              watermark_position: watermarkPosition.value,
+              slack_events: [
+                slackComment.checked ? 'comment' : null,
+                slackView.checked ? 'view' : null
+              ].filter(Boolean),
+              // Only send the webhook when the field was actually filled in,
+              // so saving other settings does not wipe a stored one.
+              slack_webhook: slackWebhook.value.trim() !== '' ? slackWebhook.value.trim() : undefined
             }).then(function () {
               ML.toast('Workspace saved', 'success');
               return App.refreshMe();

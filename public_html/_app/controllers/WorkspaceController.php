@@ -50,6 +50,12 @@ final class WorkspaceController
             'cta_url'       => $w['default_cta_url'],
             'storage_used'  => (int)$w['storage_used'],
             'storage_human' => Util::bytes((int)$w['storage_used']),
+            'slack_connected' => !empty($w['slack_webhook']),
+            'slack_events'  => array_values(array_filter(array_map('trim',
+                explode(',', (string)($w['slack_events'] ?? 'comment'))))),
+            'watermark_mode'     => (string)($w['watermark_mode'] ?? 'none'),
+            'watermark_text'     => $w['watermark_text'] ?? null,
+            'watermark_position' => (string)($w['watermark_position'] ?? 'bottom-right'),
         ];
     }
 
@@ -116,6 +122,35 @@ final class WorkspaceController
                 $data['logo'] = $rel;
             }
         }
+        if (Http::input('slack_webhook') !== null) {
+            $hook = Http::str('slack_webhook');
+            if ($hook === '') {
+                $data['slack_webhook'] = null;
+            } elseif (preg_match('#^https://hooks\.slack\.com/#i', $hook)) {
+                $data['slack_webhook'] = mb_substr($hook, 0, 500);
+            } else {
+                Http::fail('That does not look like a Slack incoming webhook URL '
+                    . '(it should start with https://hooks.slack.com/).');
+            }
+        }
+        if (Http::input('slack_events') !== null) {
+            $allowed = ['comment', 'view', 'reaction'];
+            $events = array_values(array_intersect($allowed, (array)Http::input('slack_events', [])));
+            $data['slack_events'] = implode(',', $events);
+        }
+        if (Http::input('watermark_mode') !== null) {
+            $mode = Http::str('watermark_mode');
+            $data['watermark_mode'] = in_array($mode, ['none', 'logo', 'text'], true) ? $mode : 'none';
+        }
+        if (Http::input('watermark_text') !== null) {
+            $data['watermark_text'] = mb_substr(Http::str('watermark_text'), 0, 120) ?: null;
+        }
+        if (Http::input('watermark_position') !== null) {
+            $position = Http::str('watermark_position');
+            $data['watermark_position'] = in_array(
+                $position, ['top-left', 'top-right', 'bottom-left', 'bottom-right'], true
+            ) ? $position : 'bottom-right';
+        }
         if (Http::bool('remove_logo')) {
             $old = Db::value('SELECT logo FROM workspaces WHERE id = ?', [$wsId]);
             Storage::delete($old ? (string)$old : null);
@@ -126,6 +161,27 @@ final class WorkspaceController
             Db::update('workspaces', $data, 'id = ?', [$wsId]);
         }
         Http::ok();
+    }
+
+    /** POST /api/workspaces/slack-test — prove the webhook works. */
+    public static function slackTest(): void
+    {
+        $wsId = Auth::workspaceId();
+        $user = Permissions::requireMember($wsId, 'admin');
+        $hook = (string)Db::value('SELECT slack_webhook FROM workspaces WHERE id = ?', [$wsId]);
+        if ($hook === '') {
+            Http::fail('Save a Slack webhook URL first.');
+        }
+        $sent = Slack::post(
+            $hook,
+            '*' . $user['name'] . '* connected this Slack channel to MyLoom. '
+                . 'Comments and views will show up here.',
+            ['url' => Config::get('app_url'), 'button' => 'Open MyLoom']
+        );
+        if (!$sent) {
+            Http::fail('Slack rejected the message. Check the webhook URL and that the channel still exists.', 502);
+        }
+        Http::ok(['sent' => true]);
     }
 
     public static function members(): void

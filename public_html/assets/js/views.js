@@ -19,6 +19,47 @@
 
     var openVideo = function () { App.go('/video/' + video.uid); };
 
+    // Hover preview: after a moment, play the real file muted in place. No extra
+    // storage or GIF generation, and it stops the moment the pointer leaves.
+    var previewTimer = null;
+    var previewNode = null;
+    var thumbHolder = el('div.thumb', { onclick: openVideo, title: 'Open ' + video.title }, [
+      thumbInner,
+      el('div.play-overlay', {}, el('i')),
+      el('span.len', { text: video.duration_human })
+    ]);
+
+    function startPreview() {
+      if (previewNode || video.status !== 'ready') { return; }
+      previewTimer = setTimeout(function () {
+        previewNode = el('video.thumb-preview', {
+          src: video.share_url ? null : null,
+          muted: true, autoplay: true, loop: true, playsinline: true, preload: 'none'
+        });
+        previewNode.muted = true;
+        previewNode.src = App.fileUrl('v=' + encodeURIComponent(video.uid));
+        previewNode.addEventListener('loadeddata', function () {
+          try { previewNode.currentTime = Math.min(1.5, (video.duration || 4) / 4); } catch (e) { /* ignore */ }
+        });
+        previewNode.play().catch(function () { /* autoplay may be blocked */ });
+        thumbHolder.appendChild(previewNode);
+      }, 450);
+    }
+
+    function stopPreview() {
+      clearTimeout(previewTimer);
+      previewTimer = null;
+      if (previewNode) {
+        previewNode.pause();
+        previewNode.removeAttribute('src');
+        previewNode.remove();
+        previewNode = null;
+      }
+    }
+
+    thumbHolder.addEventListener('pointerenter', startPreview);
+    thumbHolder.addEventListener('pointerleave', stopPreview);
+
     var card = el('div.video-card', {}, [
       context.selectable
         ? el('input.card-select', {
@@ -30,11 +71,7 @@
             }
           })
         : null,
-      el('div.thumb', { onclick: openVideo, title: 'Open ' + video.title }, [
-        thumbInner,
-        el('div.play-overlay', {}, el('i')),
-        el('span.len', { text: video.duration_human })
-      ]),
+      thumbHolder,
       el('div.card-actions', {}, [
         el('button.btn.sm.icon', {
           type: 'button', title: 'Copy share link',

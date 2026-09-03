@@ -21,7 +21,8 @@ final class WatchController
         }
         $video = Db::one(
             'SELECT v.*, u.name AS owner_name, u.avatar AS owner_avatar, u.email AS owner_email,
-                    w.name AS ws_name, w.logo AS ws_logo, w.accent_color AS ws_accent, w.hide_branding
+                    w.name AS ws_name, w.logo AS ws_logo, w.accent_color AS ws_accent, w.hide_branding,
+                    w.watermark_mode, w.watermark_text, w.watermark_position
              FROM videos v
              JOIN users u ON u.id = v.owner_id
              JOIN workspaces w ON w.id = v.workspace_id
@@ -92,6 +93,7 @@ final class WatchController
                 'avatar' => !empty($video['owner_avatar']) ? Util::url('file.php?a=' . rawurlencode($video['owner_avatar'])) : null,
             ],
             'branding'  => $base['branding'],
+            'watermark' => self::watermark($video),
             'chapters'  => array_map(static fn(array $c) => [
                 'start_time' => (float)$c['start_time'],
                 'title'      => $c['title'],
@@ -115,6 +117,50 @@ final class WatchController
         ];
 
         Http::json(['ok' => true, 'video' => $payload]);
+    }
+
+    /** Workspace watermark settings, resolved for the player. */
+    private static function watermark(array $video): ?array
+    {
+        $mode = (string)($video['watermark_mode'] ?? 'none');
+        if ($mode === 'none' || $mode === '') {
+            return null;
+        }
+        if ($mode === 'logo' && empty($video['ws_logo'])) {
+            return null;
+        }
+        return [
+            'mode'     => $mode,
+            'text'     => $mode === 'text' ? ($video['watermark_text'] ?: $video['ws_name']) : null,
+            'logo'     => $mode === 'logo' && !empty($video['ws_logo'])
+                ? Util::url('file.php?a=' . rawurlencode((string)$video['ws_logo'])) : null,
+            'position' => (string)($video['watermark_position'] ?? 'bottom-right'),
+        ];
+    }
+
+    /**
+     * POST /api/watch/click — a viewer followed the call to action or a link
+     * overlay. Recorded so the owner can see whether the video actually works.
+     */
+    public static function click(): void
+    {
+        [$video, $share] = self::resolve();
+        [$allowed] = Permissions::canWatch($video, $share);
+        if (!$allowed || Permissions::canManageVideo($video)) {
+            Http::ok(['recorded' => false]);
+        }
+
+        $user = Auth::user();
+        Db::insert('link_clicks', [
+            'video_id'      => (int)$video['id'],
+            'annotation_id' => Http::int('annotation_id') ?: null,
+            'kind'          => in_array(Http::str('kind'), ['cta', 'overlay'], true) ? Http::str('kind') : 'cta',
+            'url'           => mb_substr(Http::str('url'), 0, 500) ?: null,
+            'session_key'   => $user ? 'u' . (int)$user['id'] : Auth::guestKey(),
+            'at_time'       => Http::input('at_time') !== null ? max(0, Http::float('at_time')) : null,
+            'created_at'    => Util::now(),
+        ]);
+        Http::ok(['recorded' => true]);
     }
 
     /** POST /api/watch/view — records or refreshes a view row. */
@@ -163,6 +209,13 @@ final class WatchController
         }
 
         self::notifyOwner($video, $user, $identity);
+        Slack::notify(
+            (int)$video['workspace_id'],
+            'view',
+            '*' . ($user['name'] ?? ($identity['name'] ?? 'Someone')) . '* watched *'
+                . $video['title'] . '*',
+            ['url' => Util::url('v/' . $video['uid']), 'button' => 'Open video']
+        );
         Http::ok(['counted' => true, 'view_id' => $viewId]);
     }
 
