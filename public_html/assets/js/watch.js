@@ -246,13 +246,25 @@
       onEnded: function () { flush(true); },
       onError: function () {
         ML.toast('This video could not be played. It may still be processing.', 'error');
-      }
+      },
+      onTrackChange: function (track) { loadCaptionTrack(track); }
     });
 
     ML.Overlays.attach(player, video.annotations || []);
 
-    if (video.captions_url) {
-      ML.get('transcript/get', query()).then(function (response) {
+    var tracks = video.caption_tracks || [];
+    if (tracks.length) {
+      player.setCaptionTracks(tracks);
+      // Remember the viewer's language choice across videos.
+      var preferred = ML.storage('captionLang');
+      var chosen = tracks.filter(function (t) { return t.lang === preferred; })[0] ||
+        tracks.filter(function (t) { return t.is_default; })[0] || tracks[0];
+      loadCaptionTrack(chosen);
+    }
+
+    function loadCaptionTrack(track) {
+      if (!track) { return; }
+      ML.get('transcript/get', query({ lang: track.lang })).then(function (response) {
         if (response.transcript && response.transcript.segments.length) {
           player.setCaptions(response.transcript.segments);
         }

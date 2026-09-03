@@ -152,14 +152,23 @@ try {
         myloom_stream($abs, $mimes[$ext] ?? 'image/jpeg', false, 'poster', 604800);
     }
 
-    // ---- Captions ----
+    // ---- Captions (VTT for the player, SRT for editors and social) ----
     if (isset($_GET['c'])) {
         require_once APP_DIR . '/controllers/TranscriptController.php';
-        $vtt = TranscriptController::vtt((int)$video['id']);
+        $lang = preg_replace('/[^A-Za-z-]/', '', (string)($_GET['lang'] ?? '')) ?: '';
+        $wantsSrt = ($_GET['format'] ?? '') === 'srt';
+        $body = $wantsSrt
+            ? TranscriptController::srt((int)$video['id'], $lang)
+            : TranscriptController::vtt((int)$video['id'], $lang);
+
         Auth::release();
-        header('Content-Type: text/vtt; charset=utf-8');
+        header('Content-Type: ' . ($wantsSrt ? 'application/x-subrip' : 'text/vtt') . '; charset=utf-8');
         header('Cache-Control: private, max-age=300');
-        echo $vtt;
+        if ($wantsSrt) {
+            $name = preg_replace('/[^A-Za-z0-9._ -]/', '_', (string)$video['title']);
+            header('Content-Disposition: attachment; filename="' . $name . ($lang ? '.' . $lang : '') . '.srt"');
+        }
+        echo $body;
         exit;
     }
 

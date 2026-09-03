@@ -573,6 +573,7 @@
         var aiKey = el('input', { type: 'password', placeholder: stats.settings.ai_configured ? 'configured — leave blank to keep' : 'sk-…' });
         var aiBase = el('input', { type: 'text', value: stats.settings.ai_base_url });
         var aiModel = el('input', { type: 'text', value: stats.settings.ai_model });
+        var aiSttModel = el('input', { type: 'text', value: stats.settings.ai_transcribe_model || 'whisper-1' });
 
         clear(body).appendChild(el('div.settings-max', {}, [
           el('div.stat-grid.mb', {}, [
@@ -597,10 +598,16 @@
             el('label.field', {}, [el('span', {}, 'API key'), aiKey]),
             el('label.field', {}, [el('span', {}, 'Base URL'), aiBase]),
             el('label.field', {}, [el('span', {}, 'Model'), aiModel]),
+            el('label.field', {}, [el('span', {}, 'Transcription model'), aiSttModel,
+              el('div.hint', {}, 'Used for “Transcribe with AI”. whisper-1 on OpenAI; '
+                + 'set whatever your provider calls its speech-to-text model.')]),
             el('button.btn.primary', {
               type: 'button',
               onclick: function () {
-                var payload = { site_name: siteName.value, ai_base_url: aiBase.value, ai_model: aiModel.value };
+                var payload = {
+                  site_name: siteName.value, ai_base_url: aiBase.value,
+                  ai_model: aiModel.value, ai_transcribe_model: aiSttModel.value
+                };
                 if (aiKey.value) { payload.ai_api_key = aiKey.value; }
                 ML.post('admin/settings', payload)
                   .then(function () { ML.toast('Settings saved', 'success'); })

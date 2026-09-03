@@ -311,12 +311,57 @@
       volume.value = video.muted ? 0 : video.volume;
     }
 
-    ccBtn.onclick = function () {
-      if (!captions.length) { ML.toast('No captions available for this video.'); return; }
+    /**
+     * Captions. With one track the button just toggles; with several it opens a
+     * language menu, because a viewer who needs the other language has no other
+     * way to reach it.
+     */
+    var captionTracks = options.captionTracks || [];
+    var captionMenu = null;
+    var activeTrack = null;
+
+    function toggleCaptions() {
       captionsOn = !captionsOn;
       ML.storage('captionsOn', captionsOn);
       ccBtn.classList.toggle('active', captionsOn);
       render();
+    }
+
+    function chooseTrack(track) {
+      if (captionMenu) { captionMenu.remove(); captionMenu = null; }
+      if (!track) {
+        captionsOn = false;
+        ML.storage('captionsOn', false);
+        ccBtn.classList.remove('active');
+        render();
+        return;
+      }
+      activeTrack = track;
+      ML.storage('captionLang', track.lang);
+      if (options.onTrackChange) { options.onTrackChange(track); }
+      captionsOn = true;
+      ML.storage('captionsOn', true);
+      ccBtn.classList.add('active');
+      render();
+    }
+
+    ccBtn.onclick = function () {
+      if (captionTracks.length > 1) {
+        if (captionMenu) { captionMenu.remove(); captionMenu = null; return; }
+        captionMenu = el('div.speed-menu', {}, [
+          el('button' + (!captionsOn ? '.active' : ''), {
+            type: 'button', onclick: function () { chooseTrack(null); }
+          }, 'Off')
+        ].concat(captionTracks.map(function (track) {
+          return el('button' + (captionsOn && activeTrack && activeTrack.lang === track.lang ? '.active' : ''), {
+            type: 'button', onclick: function () { chooseTrack(track); }
+          }, track.label || track.lang);
+        })));
+        root.appendChild(captionMenu);
+        return;
+      }
+      if (!captions.length) { ML.toast('No captions available for this video.'); return; }
+      toggleCaptions();
     };
 
     speedBtn.onclick = function () {
@@ -531,6 +576,11 @@
         render();
       },
       setChapters: function (list) { chapters = list || []; renderMarkers(); render(); },
+      setCaptionTracks: function (list) {
+        captionTracks = list || [];
+        activeTrack = captionTracks.filter(function (t) { return t.is_default; })[0] || captionTracks[0] || null;
+      },
+      activeCaptionTrack: function () { return activeTrack; },
       setMarkers: function (list) { markers = list || []; renderMarkers(); },
       /** Float an emoji up from the player, used by live reactions. */
       floatEmoji: function (emoji) {

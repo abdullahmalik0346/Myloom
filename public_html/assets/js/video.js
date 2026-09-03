@@ -468,20 +468,45 @@
 
     function transcriptPane(node) {
       ML.loading(node);
-      ML.get('transcript/get', { uid: uid }).then(function (response) {
-        var transcript = response.transcript;
-        var body = el('div');
+      var activeLang = '';
 
-        clear(node).appendChild(el('div', { style: { maxWidth: '820px' } }, [
+      function load() {
+        return Promise.all([
+          ML.get('transcript/list', { uid: uid }),
+          ML.get('transcript/get', { uid: uid, lang: activeLang })
+        ]).then(function (results) {
+          renderPane(results[0].transcripts || [], results[1].transcript);
+        }).catch(function (error) {
+          clear(node).appendChild(el('div.card.pad', {}, el('p', { text: error.message })));
+        });
+      }
+
+      function renderPane(tracks, transcript) {
+        var body = el('div');
+        var langRow = el('div.row.wrap', { style: { gap: '6px' } });
+
+        tracks.forEach(function (track) {
+          langRow.appendChild(el('button.chip' + ((activeLang || (transcript && transcript.lang)) === track.lang ? '.active' : ''), {
+            type: 'button',
+            onclick: function () { activeLang = track.lang; load(); }
+          }, [
+            track.label + ' (' + track.lang + ')',
+            track.is_default ? el('span.tiny', {}, ' ★') : null
+          ]));
+        });
+
+        clear(node).appendChild(el('div', { style: { maxWidth: '860px' } }, [
           el('div.card', {}, [
             el('div.card-head', {}, [
               el('strong', {}, 'Transcript & captions'),
-              el('div.row', {}, [
-                el('button.btn.sm', {
-                  type: 'button',
-                  onclick: function () { pasteTranscriptDialog(); }
-                }, transcript ? 'Replace' : 'Paste transcript'),
+              el('div.row.wrap', {}, [
                 el('button.btn.sm.primary', {
+                  type: 'button', onclick: transcribeDialog
+                }, '🎙 Transcribe with AI'),
+                el('button.btn.sm', { type: 'button', onclick: pasteTranscriptDialog },
+                  transcript ? 'Paste / replace' : 'Paste transcript'),
+                transcript ? el('button.btn.sm', { type: 'button', onclick: translateDialog }, '🌍 Translate') : null,
+                el('button.btn.sm', {
                   type: 'button',
                   onclick: function (event) {
                     var button = event.target;
@@ -501,35 +526,267 @@
                 }, '✨ Summarise')
               ])
             ]),
+            tracks.length > 1 ? el('div.card-body', { style: { paddingBottom: '0' } }, [
+              el('p.hint', {}, 'Languages'), langRow
+            ]) : null,
             el('div.card-body', {}, body)
           ])
         ]));
 
         if (!transcript) {
           body.appendChild(ML.emptyState('📝', 'No transcript yet',
-            'Record with “Capture transcript” enabled in Chrome or Edge, or paste an existing transcript.'));
+            'Use “Transcribe with AI” for an accurate one, record with “Capture transcript” ' +
+            'enabled in Chrome, or paste an existing transcript.'));
           return;
         }
 
-        body.appendChild(el('div.row.between.mb', {}, [
-          el('span.small.muted', { text: transcript.segments.length + ' lines · ' + transcript.label + ' · captured from ' + transcript.source }),
-          el('div.row', {}, [
-            el('a.btn.sm', { href: App.fileUrl('c=' + encodeURIComponent(uid)), download: uid + '.vtt' }, '⬇ .vtt'),
-            el('button.btn.sm', {
-              type: 'button', onclick: function () { ML.copy(transcript.text); }
-            }, 'Copy text')
+        var lang = transcript.lang;
+        body.appendChild(el('div.row.between.wrap.mb', {}, [
+          el('span.small.muted', {
+            text: transcript.segments.length + ' lines · ' + transcript.label +
+              ' · from ' + (transcript.source === 'api' ? 'AI' : transcript.source)
+          }),
+          el('div.row.wrap', {}, [
+            el('a.btn.sm', { href: App.fileUrl('c=' + encodeURIComponent(uid) + '&lang=' + encodeURIComponent(lang)),
+              download: uid + '-' + lang + '.vtt' }, '⬇ .vtt'),
+            el('a.btn.sm', { href: App.fileUrl('c=' + encodeURIComponent(uid) + '&lang=' + encodeURIComponent(lang) + '&format=srt') }, '⬇ .srt'),
+            el('button.btn.sm', { type: 'button', onclick: function () { ML.copy(transcript.text); } }, 'Copy text'),
+            el('button.btn.sm', { type: 'button', onclick: function () { editDialog(transcript); } }, '✎ Edit lines'),
+            tracks.length > 1 && !isDefault(tracks, lang) ? el('button.btn.sm', {
+              type: 'button',
+              onclick: function () {
+                ML.post('transcript/make-default', { uid: uid, lang: lang })
+                  .then(function () { ML.toast('Default caption language set', 'success'); return load(); })
+                  .catch(ML.toastError);
+              }
+            }, 'Make default') : null,
+            tracks.length > 1 ? el('button.btn.sm.danger', {
+              type: 'button',
+              onclick: function () {
+                ML.confirm({ title: 'Delete this language?', message: transcript.label + ' captions will be removed.',
+                  danger: true, confirmLabel: 'Delete' }).then(function (yes) {
+                  if (!yes) { return; }
+                  ML.post('transcript/delete', { uid: uid, lang: lang })
+                    .then(function () { activeLang = ''; return load(); })
+                    .catch(ML.toastError);
+                });
+              }
+            }, 'Delete') : null
           ])
         ]));
+
         body.appendChild(el('div', { style: { maxHeight: '460px', overflowY: 'auto' } },
           transcript.segments.map(function (segment) {
-            return el('div.transcript-line', {}, [
-              el('time', { text: ML.duration(segment.start) }),
+            return el('div.transcript-line', {
+              onclick: function () {
+                if (player) { player.seekAbsolute(segment.start); player.play(); }
+              }
+            }, [
+              el('time', { text: ML.timecode(segment.start) }),
               el('span', { text: segment.text })
             ]);
           })));
-      }).catch(function (error) {
-        clear(node).appendChild(el('div.card.pad', {}, el('p', { text: error.message })));
-      });
+      }
+
+      function isDefault(tracks, lang) {
+        return tracks.some(function (t) { return t.lang === lang && t.is_default; });
+      }
+
+      /* --- Transcribe with AI ------------------------------------------- */
+
+      function transcribeDialog() {
+        var langInput = el('input', { type: 'text', placeholder: 'auto-detect', value: '' });
+        var status = el('p.hint');
+        var bar = el('div.upload-progress', { style: { display: 'none' } }, el('i', { style: { width: '0%' } }));
+        var cancelled = false;
+
+        var dialog = ML.modal({
+          title: 'Transcribe with AI',
+          body: [
+            el('p.small', {}, 'Your browser extracts the audio and sends it to the speech-to-text ' +
+              'service configured for this instance. Nothing goes anywhere else.'),
+            el('label.field', {}, [
+              el('span', {}, 'Spoken language (optional)'), langInput,
+              el('div.hint', {}, 'A two-letter code like en, ur, ar or es. Leave blank to auto-detect.')
+            ]),
+            bar, status
+          ],
+          footer: function (api) {
+            return [
+              el('button.btn', { type: 'button', onclick: function () { cancelled = true; api.close(); } }, 'Cancel'),
+              el('button.btn.primary', {
+                type: 'button',
+                onclick: function (event) { run(event.target, api); }
+              }, 'Start')
+            ];
+          }
+        });
+
+        function progress(label, ratio) {
+          bar.style.display = '';
+          bar.firstChild.style.width = Math.round((ratio || 0) * 100) + '%';
+          status.textContent = label + (ratio ? ' — ' + Math.round(ratio * 100) + '%' : '…');
+        }
+
+        function run(button, api) {
+          button.disabled = true;
+          langInput.disabled = true;
+          status.style.color = '';
+
+          ML.Audio.extractChunks(video.media_url, 480, progress)
+            .then(function (chunks) {
+              var all = [];
+              var index = 0;
+              var next = function () {
+                if (cancelled || index >= chunks.length) { return Promise.resolve(all); }
+                var chunk = chunks[index];
+                progress('Transcribing part ' + (index + 1) + ' of ' + chunks.length, index / chunks.length);
+                var form = new FormData();
+                form.append('uid', uid);
+                form.append('audio', chunk.blob, 'chunk-' + index + '.wav');
+                form.append('offset', String(chunk.offset));
+                form.append('duration', String(chunk.duration));
+                if (langInput.value.trim()) { form.append('language', langInput.value.trim()); }
+                return ML.postForm('transcript/transcribe', form).then(function (response) {
+                  all = all.concat(response.segments || []);
+                  index++;
+                  return next();
+                });
+              };
+              return next();
+            })
+            .then(function (segments) {
+              if (cancelled) { return null; }
+              if (!segments.length) { throw new Error('No speech was recognised in this recording.'); }
+              progress('Saving', 1);
+              return ML.post('transcript/save', {
+                uid: uid, segments: segments, source: 'api',
+                lang: langInput.value.trim() || 'en',
+                label: (langInput.value.trim() || 'en').toUpperCase()
+              }).then(function () {
+                api.close();
+                ML.toast(segments.length + ' lines transcribed', 'success');
+                activeLang = '';
+                return load();
+              });
+            })
+            .catch(function (error) {
+              button.disabled = false;
+              langInput.disabled = false;
+              status.textContent = error.message;
+              status.style.color = 'var(--danger)';
+            });
+        }
+      }
+
+      /* --- Translate ------------------------------------------------------ */
+
+      function translateDialog() {
+        var lang = el('input', { type: 'text', value: 'ur', placeholder: 'ur' });
+        var label = el('input', { type: 'text', value: 'Urdu', placeholder: 'Urdu' });
+        ML.modal({
+          title: 'Translate captions',
+          body: [
+            el('p.small', {}, 'Creates a second caption track. Timings are kept, so it lines up with the video.'),
+            el('label.field', {}, [el('span', {}, 'Language code'), lang]),
+            el('label.field', {}, [el('span', {}, 'Language name'), label])
+          ],
+          footer: function (api) {
+            return [
+              el('button.btn', { type: 'button', onclick: api.close }, 'Cancel'),
+              el('button.btn.primary', {
+                type: 'button',
+                onclick: function (event) {
+                  var button = event.target;
+                  button.disabled = true;
+                  button.textContent = 'Translating…';
+                  ML.post('transcript/translate', {
+                    uid: uid, lang: lang.value.trim(), label: label.value.trim()
+                  }).then(function (result) {
+                    api.close();
+                    ML.toast(result.lines + ' lines translated', 'success');
+                    activeLang = result.lang;
+                    return load();
+                  }).catch(function (error) {
+                    button.disabled = false;
+                    button.textContent = 'Translate';
+                    ML.toastError(error);
+                  });
+                }
+              }, 'Translate')
+            ];
+          }
+        });
+      }
+
+      /* --- Edit lines ------------------------------------------------------ */
+
+      function editDialog(transcript) {
+        var rows = transcript.segments.map(function (segment) {
+          return { start: segment.start, end: segment.end, text: segment.text };
+        });
+        var listNode = el('div.col', { style: { gap: '6px' } });
+
+        rows.forEach(function (row, index) {
+          listNode.appendChild(el('div.row', { style: { alignItems: 'flex-start' } }, [
+            el('input', {
+              type: 'text', value: ML.timecode(row.start, true), style: { maxWidth: '90px' },
+              title: 'Start time',
+              onchange: function (e) {
+                var parsed = ML.parseTime(e.target.value);
+                if (parsed === null) { e.target.value = ML.timecode(row.start, true); return; }
+                row.start = parsed;
+              }
+            }),
+            el('textarea', {
+              rows: 1, value: row.text, style: { minHeight: '36px' },
+              oninput: function (e) { row.text = e.target.value; }
+            }),
+            el('button.btn.sm.ghost', {
+              type: 'button', title: 'Delete this line',
+              onclick: function (event) { rows[index] = null; event.target.closest('.row').remove(); }
+            }, '✕')
+          ]));
+        });
+
+        ML.modal({
+          title: 'Edit captions — ' + transcript.label,
+          wide: true,
+          body: [
+            el('p.hint', {}, 'Fix wording or timings. End times follow the next line automatically.'),
+            el('div', { style: { maxHeight: '52vh', overflowY: 'auto' } }, listNode)
+          ],
+          footer: function (api) {
+            return [
+              el('button.btn', { type: 'button', onclick: api.close }, 'Cancel'),
+              el('button.btn.primary', {
+                type: 'button',
+                onclick: function () {
+                  var kept = rows.filter(Boolean)
+                    .filter(function (row) { return row.text.trim(); })
+                    .sort(function (a, b) { return a.start - b.start; });
+                  kept.forEach(function (row, i) {
+                    var next = kept[i + 1];
+                    row.end = next ? Math.max(row.start + 0.4, Math.min(row.end, next.start)) 
+                                   : Math.max(row.end, row.start + 1);
+                  });
+                  if (!kept.length) { ML.toast('Nothing left to save.', 'error'); return; }
+                  ML.post('transcript/save', {
+                    uid: uid, segments: kept, source: 'manual',
+                    lang: transcript.lang, label: transcript.label
+                  }).then(function () {
+                    api.close();
+                    ML.toast('Captions saved', 'success');
+                    return load();
+                  }).catch(ML.toastError);
+                }
+              }, 'Save captions')
+            ];
+          }
+        });
+      }
+
+      /* --- Paste ------------------------------------------------------------ */
 
       function pasteTranscriptDialog() {
         var textarea = el('textarea', { rows: 12, placeholder: 'Paste the transcript here. One line per caption, optionally prefixed with a timestamp like 0:12 or 00:00:12.' });
@@ -546,7 +803,7 @@
                   var segments = parseTranscript(textarea.value, video.duration);
                   if (!segments.length) { ML.toast('Nothing to import.', 'error'); return; }
                   ML.post('transcript/save', { uid: uid, segments: segments, source: 'manual' })
-                    .then(function () { api.close(); ML.toast('Transcript saved', 'success'); renderPane(node.parentNode ? node : node); transcriptPane(node); })
+                    .then(function () { api.close(); ML.toast('Transcript saved', 'success'); return load(); })
                     .catch(ML.toastError);
                 }
               }, 'Save transcript')
@@ -554,6 +811,8 @@
           }
         });
       }
+
+      load();
     }
 
     /** Parse pasted text into timed segments. */

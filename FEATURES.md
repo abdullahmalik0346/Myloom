@@ -68,12 +68,13 @@ not do at all. Loom's paid tiers (Business / Business + AI) are the reference.
 
 | Loom paid | MyLoom | Notes |
 |---|---|---|
-| Automatic transcription | ⚠️ | Captured live in the browser via the Web Speech API — Chrome and Edge only, and less accurate than Loom's server-side model |
-| Closed captions | ✅ | Rendered in the player and downloadable as WebVTT |
+| Automatic transcription | ✅ | **Transcribe with AI** sends the audio to any OpenAI-compatible speech-to-text endpoint (Whisper and friends) for proper accuracy. A rough live transcript from the browser's speech API is still captured while recording, as a no-key fallback |
+| Closed captions | ✅ | Rendered in the player, downloadable as **WebVTT or SRT** |
+| Edit captions | ✅ | Fix wording and timings line by line |
+| Translated captions | ✅ | Creates a second track with the original timings; viewers pick the language in the player |
 | Transcript search | ✅ | Inside a video, and across the whole library |
 | Paste / import a transcript | ✅ | With or without timestamps |
 | AI titles, summaries and chapters | ✅ | Uses any OpenAI-compatible endpoint if you supply a key; otherwise a built-in offline summariser runs with no external calls |
-| Translated captions | ❌ | Not implemented |
 
 ## Editing
 
@@ -153,8 +154,11 @@ roughly eight hours of video.
    only produce WebM, which Apple devices refuse to play. Record in Chrome,
    Edge or Safari if your audience is on iOS — or convert an existing WebM to
    MP4 from the Download dialog.
-3. **Live transcription is Chrome/Edge only** and noticeably rougher than a
-   server-side model. You can always paste a better transcript in afterwards.
+3. **Good transcription needs an AI key.** With one, audio is extracted in your
+   browser (16 kHz mono WAV, split into eight-minute pieces) and sent to your
+   configured endpoint. Without one, you get the browser's live speech
+   recognition, which is Chrome/Edge only and noticeably rougher — or you can
+   paste a transcript in.
 4. **Seeking a long WebM recording can be imprecise.** MediaRecorder does not
    write a seek index; the player works around it, but MP4 recordings behave
    better.

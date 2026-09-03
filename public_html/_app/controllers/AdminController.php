@@ -19,6 +19,7 @@ final class AdminController
                 'ai_configured'=> ((string)Config::setting('ai_api_key', '')) !== '',
                 'ai_base_url'  => Config::setting('ai_base_url', 'https://api.openai.com/v1'),
                 'ai_model'     => Config::setting('ai_model', 'gpt-4o-mini'),
+                'ai_transcribe_model' => Config::setting('ai_transcribe_model', 'whisper-1'),
                 'smtp_host'    => Config::get('smtp_host'),
                 'max_upload_mb'=> (int)Config::get('max_upload_mb'),
             ],
@@ -39,7 +40,7 @@ final class AdminController
     public static function settings(): void
     {
         Auth::requireAdmin();
-        foreach (['site_name', 'ai_api_key', 'ai_base_url', 'ai_model'] as $key) {
+        foreach (['site_name', 'ai_api_key', 'ai_base_url', 'ai_model', 'ai_transcribe_model'] as $key) {
             if (Http::input($key) !== null) {
                 Config::putSetting($key, mb_substr(Http::str($key), 0, 500));
             }

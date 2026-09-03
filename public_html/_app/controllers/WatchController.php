@@ -99,6 +99,16 @@ final class WatchController
             'captions_url' => Db::value('SELECT id FROM transcripts WHERE video_id = ? LIMIT 1', [(int)$video['id']])
                 ? Util::url('file.php?c=' . rawurlencode((string)$video['uid']))
                 : null,
+            'caption_tracks' => array_map(static fn(array $t) => [
+                'lang'       => $t['lang'],
+                'label'      => $t['label'],
+                'is_default' => (int)$t['is_default'] === 1,
+                'vtt'        => Util::url('file.php?c=' . rawurlencode((string)$video['uid'])
+                    . '&lang=' . rawurlencode((string)$t['lang'])),
+            ], Db::all(
+                'SELECT lang, label, is_default FROM transcripts WHERE video_id = ? ORDER BY is_default DESC, id ASC',
+                [(int)$video['id']]
+            )),
             'annotations'  => AnnotationController::forVideo((int)$video['id']),
             'embed_code'   => VideoController::embedCode((string)$video['uid']),
             'share_url'    => $share ? Util::url('s/' . $share['token']) : Util::url('v/' . $video['uid']),
