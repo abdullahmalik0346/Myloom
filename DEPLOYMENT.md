@@ -17,6 +17,13 @@ Wait for the padlock to turn green before you test recording.
 Check your PHP version too: **MultiPHP Manager** → set the domain to **PHP 8.0
 or newer**. The installer will refuse to continue on anything older.
 
+While you are there, it is worth turning on two PHP extensions. MyLoom works
+without them, but they make it better: cPanel → **Select PHP Version** →
+**Extensions** tab → tick **`mbstring`** (correct handling of non-English text)
+and **`fileinfo`** (reliable file-type detection when importing videos).
+Changes apply immediately — no restart. `pdo_mysql` must be ticked; the
+installer will stop and tell you if it is not.
+
 ---
 
 ## Step 1 — Create the database
@@ -174,6 +181,17 @@ sign tokens. Keep it out of any public backup.
 
 **"MyLoom is not installed yet"** — `_app/config.local.php` is missing. Re-run
 `install.php`. If it was deleted, re-upload it from the package.
+
+**"Call to undefined function mb_internal_encoding()"** (or any other
+`mb_*` function) — the `mbstring` extension is off. MyLoom ships fallbacks for
+these, so upgrading to the latest version fixes it outright. To enable the real
+extension anyway: cPanel → **Select PHP Version** → **Extensions** → tick
+`mbstring`. The same applies to `finfo`/`fileinfo`.
+
+**"PHP needs a small change first"** — the installer's preflight found
+something it cannot work around, and the page names it. In practice it is
+always `pdo_mysql` unticked in *Select PHP Version*, or a PHP version below 8.0
+in *MultiPHP Manager*.
 
 **500 Internal Server Error** — check `_storage/logs/php-error.log` in File
 Manager. The most common causes are a PHP version below 8.0 and the

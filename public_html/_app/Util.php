@@ -118,6 +118,38 @@ final class Util
         return round($n, $n < 10 && $i > 0 ? 1 : 0) . ' ' . $units[$i];
     }
 
+    /**
+     * Best-effort MIME detection for an uploaded file.
+     * Prefers the fileinfo extension, then mime_content_type(), and finally the
+     * filename extension when a host ships neither. Returns null when nothing
+     * can determine it.
+     */
+    public static function detectMime(string $path, string $originalName = ''): ?string
+    {
+        if (class_exists('finfo')) {
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $mime = $finfo->file($path);
+            if (is_string($mime) && $mime !== '' && $mime !== 'application/octet-stream') {
+                return $mime;
+            }
+        }
+        if (function_exists('mime_content_type')) {
+            $mime = @mime_content_type($path);
+            if (is_string($mime) && $mime !== '') {
+                return $mime;
+            }
+        }
+        $byExtension = [
+            'webm' => 'video/webm',
+            'mp4'  => 'video/mp4',
+            'm4v'  => 'video/mp4',
+            'mov'  => 'video/quicktime',
+            'mkv'  => 'video/x-matroska',
+        ];
+        $ext = strtolower(pathinfo($originalName !== '' ? $originalName : $path, PATHINFO_EXTENSION));
+        return $byExtension[$ext] ?? null;
+    }
+
     /** Constant-time comparison that tolerates nulls. */
     public static function hashEquals(?string $a, ?string $b): bool
     {

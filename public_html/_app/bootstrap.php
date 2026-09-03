@@ -12,6 +12,10 @@ define('APP_DIR', __DIR__);
 define('PUBLIC_DIR', dirname(__DIR__));
 define('CONFIG_FILE', APP_DIR . '/config.local.php');
 
+// Polyfills first: a host with mbstring disabled must still reach the
+// installer's requirement check instead of dying on an undefined function.
+require_once __DIR__ . '/compat.php';
+
 mb_internal_encoding('UTF-8');
 date_default_timezone_set('UTC');
 

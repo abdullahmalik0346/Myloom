@@ -174,11 +174,11 @@ final class UploadController
         $name = (string)($_FILES['file']['name'] ?? 'video');
         $size = (int)$_FILES['file']['size'];
 
-        $finfo = new finfo(FILEINFO_MIME_TYPE);
-        $mime  = (string)$finfo->file($tmp);
+        $mime = Util::detectMime($tmp, $name);
         $allowed = ['video/webm' => 'webm', 'video/mp4' => 'mp4', 'video/quicktime' => 'mov', 'video/x-matroska' => 'mkv'];
-        if (!isset($allowed[$mime])) {
-            Http::fail('Only WebM, MP4, MOV and MKV video files can be uploaded (detected: ' . $mime . ').');
+        if ($mime === null || !isset($allowed[$mime])) {
+            Http::fail('Only WebM, MP4, MOV and MKV video files can be uploaded (detected: '
+                . ($mime ?? 'unknown') . ').');
         }
 
         $maxBytes = (int)Config::get('max_upload_mb') * 1024 * 1024;

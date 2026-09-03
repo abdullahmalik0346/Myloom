@@ -5,6 +5,57 @@
  * _app/config.local.php, and imports database/schema.sql.
  * Delete this file (or let the last step delete it) once you are done.
  */
+/*
+ * Preflight, before anything else is loaded.
+ * If PHP is missing something MyLoom genuinely cannot work without, say so in
+ * plain HTML. Loading the app first would raise a fatal error and the visitor
+ * would see a stack trace instead of instructions.
+ */
+$myloomBlockers = [];
+if (version_compare(PHP_VERSION, '8.0.0', '<')) {
+    $myloomBlockers[] = [
+        'This server is running PHP ' . PHP_VERSION . '; MyLoom needs 8.0 or newer.',
+        'In cPanel open <strong>MultiPHP Manager</strong>, tick your domain, choose PHP 8.1 or newer and click Apply.',
+    ];
+}
+if (!extension_loaded('pdo_mysql')) {
+    $myloomBlockers[] = [
+        'The <code>pdo_mysql</code> PHP extension is not enabled, so MyLoom cannot reach a database.',
+        'In cPanel open <strong>Select PHP Version</strong> &rarr; <strong>Extensions</strong>, tick <code>pdo_mysql</code> (and <code>mysqlnd</code>), then reload this page.',
+    ];
+}
+if (!extension_loaded('session')) {
+    $myloomBlockers[] = [
+        'The <code>session</code> PHP extension is not enabled, so nobody could stay signed in.',
+        'In cPanel open <strong>Select PHP Version</strong> &rarr; <strong>Extensions</strong> and tick <code>session</code>.',
+    ];
+}
+
+if ($myloomBlockers) {
+    http_response_code(503);
+    echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        . '<title>MyLoom setup — PHP needs attention</title><style>'
+        . 'body{margin:0;background:#f5f5fa;color:#1b1b23;font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:40px 16px}'
+        . '.w{max-width:660px;margin:0 auto}.c{background:#fff;border:1px solid #e6e6ef;border-radius:14px;padding:26px}'
+        . 'h1{font-size:20px;margin:0 0 6px}p.s{color:#71717f;margin:0 0 20px}'
+        . '.b{border-left:3px solid #e5484d;background:#fdf3f3;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:14px}'
+        . '.b p{margin:0}.b p+p{margin-top:7px;color:#55555f;font-size:14px}'
+        . 'code{background:#f2f2f7;padding:2px 6px;border-radius:5px;font-size:13px}'
+        . 'a{display:inline-block;margin-top:8px;background:#625df5;color:#fff;padding:11px 20px;border-radius:9px;'
+        . 'text-decoration:none;font-weight:600}</style></head><body><div class="w"><div class="c">'
+        . '<h1>PHP needs a small change first</h1>'
+        . '<p class="s">MyLoom has not been installed yet. Fix the item(s) below in cPanel, then reload this page.</p>';
+    foreach ($myloomBlockers as $blocker) {
+        echo '<div class="b"><p>' . $blocker[0] . '</p><p>' . $blocker[1] . '</p></div>';
+    }
+    echo '<p style="color:#71717f;font-size:13px;margin-top:18px">Extension changes take effect immediately &mdash; '
+        . 'no restart needed. If an option is greyed out, your host has locked it; open a support ticket asking them '
+        . 'to enable it.</p><a href="install.php">Re-run the check</a>'
+        . '</div></div></body></html>';
+    exit;
+}
+
 require_once __DIR__ . '/_app/bootstrap.php';
 
 /** Installation is only finished once an admin account exists, not just a config file. */
@@ -31,16 +82,22 @@ function myloom_requirements(): array
     if (!is_dir($storage)) {
         @mkdir($storage, 0755, true);
     }
+    $mb = extension_loaded('mbstring');
+    $fileinfo = extension_loaded('fileinfo');
     return [
         ['PHP 8.0 or newer',        version_compare(PHP_VERSION, '8.0.0', '>='), PHP_VERSION, true],
         ['PDO MySQL driver',        extension_loaded('pdo_mysql'), extension_loaded('pdo_mysql') ? 'loaded' : 'missing', true],
         ['JSON extension',          extension_loaded('json'), extension_loaded('json') ? 'loaded' : 'missing', true],
-        ['mbstring extension',      extension_loaded('mbstring'), extension_loaded('mbstring') ? 'loaded' : 'missing', true],
-        ['fileinfo extension',      extension_loaded('fileinfo'), extension_loaded('fileinfo') ? 'loaded' : 'missing', true],
         ['_storage is writable',    is_writable($storage), is_writable($storage) ? 'writable' : 'not writable — chmod 755', true],
         ['_app is writable (config)', is_writable(APP_DIR), is_writable(APP_DIR) ? 'writable' : 'not writable — chmod 755', true],
-        ['cURL (optional, for AI)', extension_loaded('curl'), extension_loaded('curl') ? 'loaded' : 'not loaded', false],
-        ['OpenSSL (optional, SMTP)', extension_loaded('openssl'), extension_loaded('openssl') ? 'loaded' : 'not loaded', false],
+        ['mbstring — recommended for non-English text', $mb,
+            $mb ? 'loaded' : 'using built-in fallback', false],
+        ['fileinfo — recommended for file imports', $fileinfo,
+            $fileinfo ? 'loaded' : 'falling back to file extensions', false],
+        ['cURL — needed only for AI summaries', extension_loaded('curl'),
+            extension_loaded('curl') ? 'loaded' : 'not loaded', false],
+        ['OpenSSL — needed only for SMTP email', extension_loaded('openssl'),
+            extension_loaded('openssl') ? 'loaded' : 'not loaded', false],
     ];
 }
 
@@ -223,6 +280,13 @@ $blocking = array_filter($requirements, static fn($r) => $r[3] && !$r[1]);
         <div class="alert" style="margin-top:18px">Fix the items in red, then reload this page. In cPanel, folder permissions live under File Manager → right-click the folder → Change Permissions.</div>
         <a class="btn ghost" href="install.php">Re-run check</a>
       <?php else: ?>
+        <?php if (!extension_loaded('mbstring') || !extension_loaded('fileinfo')): ?>
+          <div class="note" style="margin-top:18px">
+            MyLoom works without the extensions marked in amber, using built-in fallbacks.
+            To enable them anyway: cPanel → <strong>Select PHP Version</strong> → <strong>Extensions</strong>,
+            tick <code>mbstring</code> and <code>fileinfo</code>, then re-run this check.
+          </div>
+        <?php endif; ?>
         <a class="btn" href="install.php?step=database">Continue</a>
       <?php endif; ?>
 

@@ -47,12 +47,14 @@ Turn on AutoSSL in cPanel → *SSL/TLS Status* before you record.
 
 | | |
 |---|---|
-| PHP | 8.0 or newer, with `pdo_mysql`, `mbstring`, `json`, `fileinfo` |
+| PHP | 8.0 or newer with `pdo_mysql`. `mbstring` and `fileinfo` are recommended but not required — built-in fallbacks cover them |
 | MySQL | 5.7+ / MariaDB 10.3+ |
 | Web server | Apache or LiteSpeed with `mod_rewrite` (a no-rewrite fallback is included) |
 | Browser | Chrome, Edge, Firefox or Safari 17+ for recording; anything for watching |
 
-`curl` (for AI summaries) and `openssl` (for SMTP) are optional.
+`curl` (for AI summaries) and `openssl` (for SMTP email) are optional too. If
+PHP is missing something MyLoom genuinely cannot work without, `install.php`
+says which cPanel screen to fix it on rather than failing with a stack trace.
 
 ## Local development
 
