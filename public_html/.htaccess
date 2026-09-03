@@ -1,0 +1,72 @@
+# ---------------------------------------------------------------------------
+# MyLoom — Apache configuration (cPanel / LiteSpeed compatible)
+# ---------------------------------------------------------------------------
+
+Options -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Never rewrite real files or folders (assets, install.php, api.php, file.php).
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Application code and storage are never served directly.
+  RewriteRule ^(_app|_storage)/ - [F,L]
+
+  # Pretty API routes: /api/videos/get -> api.php?r=videos/get
+  RewriteRule ^api/(.*)$ api.php?r=$1 [QSA,L]
+
+  # Everything else is handled by the page front controller.
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+# Fallback for hosts without mod_rewrite: send 404s to the front controller.
+<IfModule !mod_rewrite.c>
+  ErrorDocument 404 /index.php
+</IfModule>
+
+# --- Security headers -------------------------------------------------------
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  # Screen capture and microphone are required by the recorder.
+  Header always set Permissions-Policy "display-capture=(self), microphone=(self), camera=(self), fullscreen=(self)"
+  Header always unset X-Powered-By
+</IfModule>
+
+# --- Block dotfiles and config leaks ---------------------------------------
+<FilesMatch "^\.|composer\.(json|lock)$|\.(sql|log|ini|sh|bak|md)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# --- Static asset caching ---------------------------------------------------
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType image/svg+xml "access plus 30 days"
+</IfModule>
+
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json text/vtt
+</IfModule>
+
+# --- Upload ceilings --------------------------------------------------------
+# Recordings stream in small chunks, so these only matter for "Upload a file".
+# Comment these out if your host returns a 500 error (some cPanel setups
+# disallow php_value in .htaccess — set the same values in MultiPHP INI Editor).
+<IfModule mod_php.c>
+  php_value upload_max_filesize 512M
+  php_value post_max_size 512M
+  php_value max_execution_time 600
+  php_value memory_limit 256M
+</IfModule>
