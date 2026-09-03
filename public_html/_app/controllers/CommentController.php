@@ -110,6 +110,14 @@ final class CommentController
             'created_at'  => Util::now(),
         ]);
 
+        // A guest who signs their comment should not stay "Anonymous" in analytics.
+        if (!$user && $guestName !== '' && $guestName !== 'Guest') {
+            Db::run(
+                'UPDATE views SET viewer_name = ? WHERE video_id = ? AND session_key = ? AND viewer_name IS NULL',
+                [$guestName, (int)$video['id'], Auth::guestKey()]
+            );
+        }
+
         self::notify($video, $user ? (string)$user['name'] : $guestName, $body);
         Http::ok(['id' => $id]);
     }

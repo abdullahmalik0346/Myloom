@@ -7,7 +7,20 @@
  */
 require_once __DIR__ . '/_app/bootstrap.php';
 
-$step   = $_GET['step'] ?? (myloom_installed() ? 'done' : 'requirements');
+/** Installation is only finished once an admin account exists, not just a config file. */
+function myloom_complete(): bool
+{
+    if (!myloom_installed()) {
+        return false;
+    }
+    try {
+        return (int)Db::value('SELECT COUNT(*) FROM users') > 0;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+$step = $_GET['step'] ?? (myloom_complete() ? 'done' : (myloom_installed() ? 'admin' : 'requirements'));
 $errors = [];
 $notice = '';
 
@@ -34,7 +47,7 @@ function myloom_requirements(): array
 // --------------------------------------------------------------------------
 // Step handlers
 // --------------------------------------------------------------------------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !myloom_installed()) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !myloom_complete()) {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'database') {
@@ -129,13 +142,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !myloom_installed()) {
     }
 }
 
-if (isset($_GET['remove']) && myloom_installed()) {
+if (isset($_GET['remove']) && myloom_complete()) {
     @unlink(__FILE__);
     header('Location: ' . Util::basePath() . '/');
     exit;
 }
 
-if (myloom_installed() && $step !== 'done') {
+if (myloom_complete() && $step !== 'done') {
     $step = 'done';
     $notice = 'MyLoom is already installed. Delete install.php to hide this page.';
 }

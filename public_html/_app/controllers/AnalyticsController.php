@@ -167,7 +167,8 @@ final class AnalyticsController
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['Viewer', 'Email', 'Watched (s)', 'Percent', 'Completed', 'Device', 'Referrer', 'Date (UTC)']);
+        // The $escape argument is passed explicitly: PHP 8.4 deprecates relying on its default.
+        fputcsv($out, ['Viewer', 'Email', 'Watched (s)', 'Percent', 'Completed', 'Device', 'Referrer', 'Date (UTC)'], ',', '"', '\\');
         foreach ($rows as $r) {
             fputcsv($out, [
                 $r['user_name'] ?: ($r['viewer_name'] ?: 'Anonymous'),
@@ -178,7 +179,7 @@ final class AnalyticsController
                 $r['device'],
                 $r['referrer'] ?: 'Direct',
                 $r['created_at'],
-            ]);
+            ], ',', '"', '\\');
         }
         fclose($out);
         exit;

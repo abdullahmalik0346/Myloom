@@ -37,10 +37,10 @@ $boot = [
 <div id="toasts" class="toasts" aria-live="polite"></div>
 <div id="modal-root"></div>
 
-<script src="<?= Util::e(Util::url('assets/js/core.js?v=' . MYLOOM)) ?>"></script>
-<script src="<?= Util::e(Util::url('assets/js/player.js?v=' . MYLOOM)) ?>"></script>
-<script src="<?= Util::e(Util::url('assets/js/recorder.js?v=' . MYLOOM)) ?>"></script>
-<script src="<?= Util::e(Util::url('assets/js/views.js?v=' . MYLOOM)) ?>"></script>
-<script src="<?= Util::e(Util::url('assets/js/app.js?v=' . MYLOOM)) ?>"></script>
+<?php foreach ([
+    'core', 'player', 'recorder', 'comments', 'views', 'record', 'video', 'settings', 'app'
+] as $script): ?>
+<script src="<?= Util::e(Util::url('assets/js/' . $script . '.js?v=' . MYLOOM)) ?>"></script>
+<?php endforeach; ?>
 </body>
 </html>

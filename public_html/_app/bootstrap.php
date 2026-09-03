@@ -30,6 +30,22 @@ require_once APP_DIR . '/Storage.php';
 require_once APP_DIR . '/Permissions.php';
 require_once APP_DIR . '/Mailer.php';
 
+/**
+ * Controllers reference each other freely (AuthController needs WorkspaceController,
+ * WatchController needs VideoController, …), so resolve them on demand.
+ */
+spl_autoload_register(static function (string $class): void {
+    if (!preg_match('/^[A-Za-z0-9_]+$/', $class)) {
+        return;
+    }
+    foreach ([APP_DIR . '/controllers/' . $class . '.php', APP_DIR . '/' . $class . '.php'] as $file) {
+        if (is_file($file)) {
+            require_once $file;
+            return;
+        }
+    }
+});
+
 Config::load();
 
 /** True when the app has not been installed yet. */
