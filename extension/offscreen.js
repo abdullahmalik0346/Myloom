@@ -13,6 +13,7 @@ const state = {
   recorder: null,
   streams: [],
   audioContext: null,
+  monitor: null,
   canvas: null,
   ctx: null,
   rafId: null,
@@ -99,9 +100,58 @@ async function getScreen(options) {
   });
 }
 
+/**
+ * Capture the tab the user is on.
+ *
+ * Tab capture silences the tab for the person recording, so the audio is also
+ * routed to the speakers — otherwise a video they are narrating goes quiet and
+ * it looks broken.
+ */
+async function getTab(options) {
+  const picked = await chrome.runtime.sendMessage({ type: 'getTabStreamId' }).catch(() => null);
+  if (!picked || !picked.ok || !picked.streamId) {
+    throw new Error((picked && picked.reason) || 'Could not capture this tab.');
+  }
+
+  const constraints = {
+    video: {
+      mandatory: {
+        chromeMediaSource: 'tab',
+        chromeMediaSourceId: picked.streamId,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        maxFrameRate: 30
+      }
+    },
+    audio: options.systemAudio !== false
+      ? { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: picked.streamId } }
+      : false
+  };
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (error) {
+    if (constraints.audio === false) { throw error; }
+    // Keep the video if the tab will not give up its audio.
+    constraints.audio = false;
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  }
+
+  if (stream.getAudioTracks().length) {
+    try {
+      state.monitor = new AudioContext();
+      state.monitor.createMediaStreamSource(stream).connect(state.monitor.destination);
+    } catch (e) {
+      // Monitoring is a nicety; a failure here must not stop the recording.
+    }
+  }
+  return stream;
+}
+
 function sizeCanvas(mode) {
   let width = 1280, height = 720;
-  const source = mode === 'camera' ? state.camVideo : state.screenVideo;
+  const source = mode === 'camera' ? state.camVideo : state.screenVideo;   // tab shares screenVideo
   if (source && source.videoWidth) {
     width = source.videoWidth;
     height = source.videoHeight;
@@ -111,7 +161,7 @@ function sizeCanvas(mode) {
   state.canvas.height = Math.round((height * scale) / 2) * 2;
 }
 
-function drawLoop(mode) {
+function drawLoop(mode, showBubble) {
   const { ctx, canvas } = state;
   const render = () => {
     state.rafId = requestAnimationFrame(render);
@@ -126,7 +176,7 @@ function drawLoop(mode) {
       ctx.drawImage(base, (w - dw) / 2, (h - dh) / 2, dw, dh);
     }
 
-    if (mode === 'screen_camera' && state.camVideo && state.camVideo.videoWidth) {
+    if (showBubble && state.camVideo && state.camVideo.videoWidth) {
       const size = state.bubble.size * h;
       const cx = state.bubble.x * w + size / 2;
       const cy = state.bubble.y * h + size / 2;
@@ -218,11 +268,14 @@ async function start(options) {
     throw new Error('Set your MyLoom address and API token in the extension options first.');
   }
 
-  const mode = options.mode || 'screen_camera';
+  // 'screen' (a display or window), 'tab' (this tab) or 'camera'.
+  // The camera bubble is independent, so it can sit over a screen or a tab.
+  const mode = options.mode === 'tab' || options.mode === 'camera' ? options.mode : 'screen';
+  const showBubble = mode !== 'camera' && options.camBubble !== false;
   let screenStream = null, camStream = null, micStream = null;
 
   if (mode !== 'camera') {
-    screenStream = await getScreen(options);
+    screenStream = mode === 'tab' ? await getTab(options) : await getScreen(options);
     state.streams.push(screenStream);
     state.screenVideo = document.createElement('video');
     state.screenVideo.muted = true;
@@ -234,16 +287,21 @@ async function start(options) {
     });
   }
 
-  if (mode !== 'screen') {
-    camStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-      audio: false
-    });
-    state.streams.push(camStream);
-    state.camVideo = document.createElement('video');
-    state.camVideo.muted = true;
-    state.camVideo.srcObject = camStream;
-    await state.camVideo.play();
+  if (mode === 'camera' || showBubble) {
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false
+      });
+      state.streams.push(camStream);
+      state.camVideo = document.createElement('video');
+      state.camVideo.muted = true;
+      state.camVideo.srcObject = camStream;
+      await state.camVideo.play();
+    } catch (error) {
+      // No camera is only fatal when the camera *is* the recording.
+      if (mode === 'camera') { throw error; }
+    }
   }
 
   if (options.mic !== false) {
@@ -258,7 +316,7 @@ async function start(options) {
   state.canvas = document.createElement('canvas');
   state.ctx = state.canvas.getContext('2d');
   sizeCanvas(mode);
-  drawLoop(mode);
+  drawLoop(mode, showBubble && !!state.camVideo);
 
   const videoTrack = state.canvas.captureStream(30).getVideoTracks()[0];
   const audioTrack = mixAudio(micStream, screenStream);
@@ -266,7 +324,8 @@ async function start(options) {
 
   const mimeType = pickType();
   const created = await api(state.settings.siteUrl, state.settings.token, 'videos/create', {
-    source: mode,
+    // Map onto the source values the server stores.
+    source: mode === 'camera' ? 'camera' : (showBubble && state.camVideo ? 'screen_camera' : 'screen'),
     mime: (mimeType.split(';')[0]) || 'video/webm',
     title: options.title || ('Recording ' + new Date().toLocaleString()),
     visibility: 'link'
@@ -354,6 +413,7 @@ function cleanup() {
   state.streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
   state.streams = [];
   if (state.audioContext) { state.audioContext.close().catch(() => {}); state.audioContext = null; }
+  if (state.monitor) { state.monitor.close().catch(() => {}); state.monitor = null; }
   if (state.screenVideo) { state.screenVideo.srcObject = null; }
   if (state.camVideo) { state.camVideo.srcObject = null; }
 }

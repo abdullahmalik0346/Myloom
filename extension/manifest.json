@@ -10,6 +10,7 @@
     "tabs",
     "scripting",
     "activeTab",
+    "tabCapture",
     "desktopCapture",
     "notifications"
   ],

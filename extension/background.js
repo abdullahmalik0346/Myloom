@@ -264,6 +264,49 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       broadcastToBar({ type: 'upload', sent: message.sent, pending: message.pending });
       return { ok: true };
     },
+    /**
+     * A stream id for the tab the user is on. This is the only way to record a
+     * single tab: chrome.tabCapture mints an id that the offscreen document
+     * opens with chromeMediaSource 'tab'.
+     */
+    getTabStreamId: async () => {
+      if (!chrome.tabCapture || !chrome.tabCapture.getMediaStreamId) {
+        return { ok: false, reason: 'This Chrome version cannot capture a single tab.' };
+      }
+      const targetTabId = state.tabId;
+      // Prefer the tab the popup was opened over: that click is what grants
+      // access, and the active tab could have changed since.
+      let tab = null;
+      if (targetTabId) {
+        tab = await chrome.tabs.get(targetTabId).catch(() => null);
+      }
+      if (!tab) {
+        [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      }
+      if (!tab || !/^https?:/i.test(tab.url || '')) {
+        return {
+          ok: false,
+          reason: 'Chrome will not record this kind of page. Open a normal web page in the tab '
+            + 'first, or choose "Screen" instead.'
+        };
+      }
+      try {
+        const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+        return { ok: true, streamId, tabId: tab.id, title: tab.title || '' };
+      } catch (error) {
+        // tabCapture needs the extension to have been *invoked* on the tab —
+        // host permissions are not enough. Clicking the toolbar icon does it.
+        const invocation = /has not been invoked|activeTab/i.test(error.message || '');
+        return {
+          ok: false,
+          reason: invocation
+            ? 'Chrome needs you to open MyLoom on the tab you want to record: click the MyLoom '
+              + 'icon while that tab is in front, then press Start. (Or use "Screen" mode.)'
+            : error.message
+        };
+      }
+    },
+
     // Fallback picker for Chrome builds that refuse getDisplayMedia from an
     // offscreen document. Returns a stream id the offscreen doc can open.
     pickDesktopSource: async () => new Promise((resolve) => {
@@ -287,7 +330,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
         try {
           chrome.desktopCapture.chooseDesktopMedia(
-            ['screen', 'window', 'tab', 'audio'],
+            // Deliberately no 'tab': a tab id from this picker cannot be opened
+            // as a desktop stream and fails with "Error starting tab capture".
+            // Recording one tab goes through chrome.tabCapture instead.
+            ['screen', 'window', 'audio'],
             tab,
             // The second argument tells us whether the chosen source can give
             // an audio track. Asking for audio when it cannot fails the capture.
@@ -340,6 +386,7 @@ async function diagnose() {
   lines.push('browser: ' + (ua ? ua[0] : navigator.userAgent));
   lines.push('platform: ' + (navigator.userAgentData?.platform || navigator.platform || 'unknown'));
   lines.push('desktopCapture API: ' + (chrome.desktopCapture?.chooseDesktopMedia ? 'available' : 'MISSING'));
+  lines.push('tabCapture API: ' + (chrome.tabCapture?.getMediaStreamId ? 'available' : 'MISSING'));
   lines.push('offscreen API: ' + (chrome.offscreen ? 'available' : 'MISSING'));
   lines.push('notifications API: ' + (chrome.notifications ? 'available' : 'MISSING'));
 

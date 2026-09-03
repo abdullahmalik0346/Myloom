@@ -8,7 +8,7 @@ export async function loadSettings() {
     siteUrl: (stored.siteUrl || '').replace(/\/+$/, ''),
     token: stored.token || '',
     prefs: Object.assign(
-      { mode: 'screen_camera', mic: true, systemAudio: true, countdown: true },
+      { mode: 'screen', camBubble: true, mic: true, systemAudio: true, countdown: true },
       stored.prefs || {}
     )
   };

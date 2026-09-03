@@ -28,8 +28,12 @@ Settings page and the extension stops working immediately.
 
 ## Using it
 
-- Click the toolbar icon on any page, pick **Screen + cam**, **Screen** or
-  **Camera**, and press **Start recording**.
+- Click the toolbar icon on any page, pick a mode, and press **Start recording**.
+  - **Screen** — a whole display or a single window, chosen in Chrome's picker.
+  - **This tab** — only the tab you opened the popup over, including its audio.
+  - **Camera** — a talking-head video with no screen.
+  - **Camera bubble** overlays your webcam in the corner, and works with either
+    of the screen modes.
 - A bar appears at the bottom of the page with a timer, **Pause** and
   **Stop & save**. It follows you as you switch tabs.
 - <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> starts and stops without opening
@@ -40,6 +44,22 @@ Chunks upload while you record, so a long session will not exhaust memory, and
 if the browser crashes at minute 40 the first 40 minutes are already on your
 server.
 
+## If a recording will not start
+
+The popup shows the last error, with a **Copy** button. **Options → Run
+diagnostics** prints a fuller report (browser, permissions, server reachability,
+offscreen state, last error) that is worth reading before anything else.
+
+The usual causes:
+
+| What you see | Why | Fix |
+|---|---|---|
+| *Error starting tab capture* | A tab was chosen in the screen picker | Use the **This tab** mode, or pick a screen/window |
+| *…has not been invoked…* | Chrome has not granted tab capture yet | Click the toolbar icon on that tab and start from the popup |
+| Picker opens then closes, nothing saved | Sharing was cancelled or denied | Choose a source and click **Share** |
+| *Not connected* | No site address or token saved | Options → paste the address and an `mlt_…` token, then **Save & test connection** |
+| Recording runs but the library stays empty | The server rejected the upload | Diagnostics will show the API error; check the token has not been revoked |
+
 ## Notes and limits
 
 - **HTTPS.** If your MyLoom runs on plain `http://`, recording still works from
@@ -48,6 +68,13 @@ server.
   rather than `getDisplayMedia()`. An offscreen document has no user gesture, and
   `getDisplayMedia()` requires one — it shows a picker that closes itself
   immediately. `getDisplayMedia()` remains as a fallback.
+- **The screen picker only offers screens and windows, never tabs.** To record a
+  tab, use the **This tab** mode instead: tabs come from `chrome.tabCapture`,
+  which is a different kind of stream and cannot be opened from a desktop
+  picker id.
+- **"This tab" needs the extension invoked on that tab.** Chrome grants tab
+  capture only after you click the toolbar icon on the tab in question, so start
+  it from the popup — the keyboard shortcut alone is not enough the first time.
 - **The control bar needs a normal web page.** On `chrome://` pages, the Web
   Store, or a blank new tab there is nothing to inject into — the toolbar badge
   still shows the timer, and the popup still has Stop.

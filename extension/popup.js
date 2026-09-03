@@ -4,10 +4,21 @@ import { loadSettings, saveSettings } from './config.js';
 const app = document.getElementById('app');
 
 const MODES = [
-  { key: 'screen_camera', icon: '🖥️', label: 'Screen + cam' },
-  { key: 'screen', icon: '🖵', label: 'Screen' },
-  { key: 'camera', icon: '🎥', label: 'Camera' }
+  { key: 'screen', icon: '🖥️', label: 'Screen', hint: 'A whole display or one window' },
+  { key: 'tab', icon: '🗔', label: 'This tab', hint: 'Just this tab, with its audio' },
+  { key: 'camera', icon: '🎥', label: 'Camera', hint: 'A talking-head video' }
 ];
+
+/** Older saved preferences used a combined screen+camera mode. */
+function normaliseMode(prefs) {
+  if (prefs.mode === 'screen_camera') {
+    return { ...prefs, mode: 'screen', camBubble: true };
+  }
+  if (!['screen', 'tab', 'camera'].includes(prefs.mode)) {
+    return { ...prefs, mode: 'screen' };
+  }
+  return prefs;
+}
 
 function el(tag, attrs, children) {
   const parts = String(tag).split(/(?=[.#])/);
@@ -84,10 +95,11 @@ async function render() {
     return renderRecording(state);
   }
 
-  let prefs = settings.prefs;
+  let prefs = normaliseMode(settings.prefs);
   const modeRow = el('div.modes');
   MODES.forEach((mode) => {
     modeRow.appendChild(el('button.mode' + (prefs.mode === mode.key ? '.active' : ''), {
+      title: mode.hint,
       onclick: async () => {
         prefs = { ...prefs, mode: mode.key };
         await saveSettings({ prefs });
@@ -121,9 +133,10 @@ async function render() {
 
   app.appendChild(modeRow);
   app.appendChild(el('div.opts', {}, [
+    prefs.mode !== 'camera' ? toggle('camBubble', 'Camera bubble') : null,
     toggle('mic', 'Microphone'),
-    toggle('systemAudio', 'Tab / system audio')
-  ]));
+    toggle('systemAudio', prefs.mode === 'tab' ? 'Tab audio' : 'System audio')
+  ].filter(Boolean)));
   app.appendChild(el('div.actions', {}, [
     startButton,
     el('button.btn', { onclick: () => chrome.tabs.create({ url: settings.siteUrl }) }, 'Open my library')
