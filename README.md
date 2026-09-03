@@ -34,6 +34,13 @@ how far they got, where they dropped off, and what they said in the comments.
 See [FEATURES.md](FEATURES.md) for a feature-by-feature comparison with paid
 Loom, including the things this deliberately does not do.
 
+## Browser extension
+
+`extension/` holds a Chrome/Edge extension: one click from any tab, a floating
+timer with pause and stop, and the recording streams into your own MyLoom. Load
+it unpacked and connect it with an API token — see
+[extension/README.md](extension/README.md).
+
 ## Install on cPanel
 
 Full walkthrough with screenshots: **[DEPLOYMENT.md](DEPLOYMENT.md)**. The short

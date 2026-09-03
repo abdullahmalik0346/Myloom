@@ -294,4 +294,19 @@ CREATE TABLE IF NOT EXISTS `annotations` (
               KEY `idx_annotation_video` (`video_id`,`start_time`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `api_tokens` (
+              `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `user_id`      INT UNSIGNED NOT NULL,
+              `name`         VARCHAR(120) NOT NULL DEFAULT "Browser extension",
+              `token_hash`   CHAR(64) NOT NULL,
+              `prefix`       VARCHAR(12) NOT NULL,
+              `workspace_id` INT UNSIGNED DEFAULT NULL,
+              `last_used_at` DATETIME DEFAULT NULL,
+              `revoked`      TINYINT(1) NOT NULL DEFAULT 0,
+              `created_at`   DATETIME NOT NULL,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uniq_token_hash` (`token_hash`),
+              KEY `idx_token_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;

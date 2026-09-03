@@ -8,6 +8,7 @@ final class Auth
 {
     private static ?array $user = null;
     private static bool $started = false;
+    private static ?int $tokenWorkspace = null;
 
     public static function start(): void
     {
@@ -54,6 +55,11 @@ final class Auth
         if (in_array(Http::method(), ['GET', 'HEAD', 'OPTIONS'], true)) {
             return;
         }
+        // A bearer token is not sent automatically by the browser, so a
+        // cross-site page cannot forge one. CSRF only applies to cookie auth.
+        if (self::isTokenRequest()) {
+            return;
+        }
         $sent = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? (string)Http::input('_csrf', '');
         if (!Util::hashEquals(self::csrf(), (string)$sent)) {
             Http::fail('Your session expired. Please refresh the page and try again.', 419);
@@ -85,11 +91,68 @@ final class Auth
         self::$user = null;
     }
 
+    /** Bearer token from the Authorization header, if any. */
+    private static function bearer(): string
+    {
+        $header = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+        if ($header === '' && function_exists('apache_request_headers')) {
+            $headers = apache_request_headers() ?: [];
+            foreach ($headers as $key => $value) {
+                if (strcasecmp($key, 'Authorization') === 0) {
+                    $header = (string)$value;
+                    break;
+                }
+            }
+        }
+        return preg_match('/^Bearer\s+([A-Za-z0-9._-]+)$/i', trim($header), $m) ? $m[1] : '';
+    }
+
+    /** True when this request authenticated with a token rather than a cookie. */
+    public static function isTokenRequest(): bool
+    {
+        return self::bearer() !== '';
+    }
+
+    /** Resolve an API token to its owner, or null. */
+    private static function userFromToken(): ?array
+    {
+        $token = self::bearer();
+        if ($token === '') {
+            return null;
+        }
+        $hash = hash('sha256', $token);
+        $row = Db::one(
+            'SELECT t.id AS token_id, t.workspace_id, u.*
+             FROM api_tokens t JOIN users u ON u.id = t.user_id
+             WHERE t.token_hash = ? AND t.revoked = 0 AND u.is_active = 1',
+            [$hash]
+        );
+        if (!$row) {
+            return null;
+        }
+        // Touch at most once a minute; this runs on every chunk upload.
+        if (empty($row['last_used_at']) || strtotime((string)$row['last_used_at']) < time() - 60) {
+            Db::update('api_tokens', ['last_used_at' => Util::now()], 'id = ?', [(int)$row['token_id']]);
+        }
+        if (!empty($row['workspace_id'])) {
+            self::$tokenWorkspace = (int)$row['workspace_id'];
+        }
+        unset($row['password_hash'], $row['verify_token'], $row['token_id'], $row['workspace_id']);
+        return $row;
+    }
+
     public static function user(): ?array
     {
         if (self::$user !== null) {
             return self::$user;
         }
+
+        $tokenUser = self::userFromToken();
+        if ($tokenUser) {
+            self::$user = $tokenUser;
+            return $tokenUser;
+        }
+
         self::start();
         $id = (int)($_SESSION['uid'] ?? 0);
         if ($id <= 0) {
@@ -141,6 +204,18 @@ final class Auth
         if (!$user) {
             return 0;
         }
+        if (self::$tokenWorkspace !== null &&
+            Permissions::roleIn(self::$tokenWorkspace, (int)$user['id']) !== null) {
+            return self::$tokenWorkspace;
+        }
+        if (self::isTokenRequest()) {
+            $row = Db::one(
+                'SELECT workspace_id FROM workspace_members WHERE user_id = ? ORDER BY id ASC LIMIT 1',
+                [(int)$user['id']]
+            );
+            return $row ? (int)$row['workspace_id'] : 0;
+        }
+
         $wsId = (int)($_SESSION['ws'] ?? 0);
         if ($wsId > 0 && Permissions::roleIn($wsId, (int)$user['id']) !== null) {
             return $wsId;

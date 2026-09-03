@@ -16,6 +16,7 @@ not do at all. Loom's paid tiers (Business / Business + AI) are the reference.
 | Countdown before recording | ✅ | 3-2-1, can be turned off |
 | Drawing / annotation while recording | ✅ | Five pen colours, strokes are burned into the video |
 | Recording from a desktop app | ❌ | Browser only — there is no native app to install |
+| One-click record from a browser extension | ✅ | Chrome/Edge extension in `extension/`, with a floating control bar that follows you across tabs |
 | Mobile recording | ❌ | Mobile browsers cannot capture the screen; watching works fine |
 | Background blur / virtual background | ❌ | Needs an ML segmentation model; not implemented |
 | Remove filler words and silences | ❌ | Would require server-side re-encoding (see *Editing* below) |
@@ -132,6 +133,7 @@ apply, the original bytes are served instantly with no quality loss.
 | Video library search and filters | ✅ | Mine / shared / starred, sort, bulk move and delete |
 | Trash with restore | ✅ | |
 | Loom Record button in Slack, Gmail, Jira | ❌ | No third-party integrations |
+| API tokens for other tools | ✅ | Create and revoke per-token in Settings → Profile; only the hash is stored |
 | Salesforce / HubSpot sync | ❌ | |
 | Enterprise admin controls, audit log | ❌ | There is a basic instance admin panel |
 

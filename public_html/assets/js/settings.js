@@ -124,6 +124,12 @@
           }, 'Update password')
         ]),
         el('div.section', {}, [
+          el('h3', {}, 'API tokens'),
+          el('p.hint', {}, 'Tokens let the browser extension record into this account. '
+            + 'Each one is shown once — store it somewhere safe and revoke it if it leaks.'),
+          tokensPanel()
+        ]),
+        el('div.section', {}, [
           el('h3', {}, 'Appearance'),
           el('div.btn-group', {}, ['system', 'light', 'dark'].map(function (theme) {
             return el('button.btn' + ((ML.storage('theme') || 'system') === theme ? '.active' : ''), {
@@ -137,6 +143,104 @@
           }))
         ])
       ]));
+    }
+
+    /** List, create and revoke API tokens. */
+    function tokensPanel() {
+      var wrap = el('div');
+
+      function load() {
+        ML.loading(wrap);
+        ML.get('tokens').then(function (response) {
+          clear(wrap);
+          if (response.tokens.length) {
+            wrap.appendChild(el('div.table-wrap', {}, el('table.data', {}, [
+              el('thead', {}, el('tr', {}, [
+                el('th', {}, 'Name'), el('th', {}, 'Token'), el('th', {}, 'Last used'), el('th', {}, '')
+              ])),
+              el('tbody', {}, response.tokens.map(function (token) {
+                return el('tr', { style: token.revoked ? { opacity: '.5' } : null }, [
+                  el('td', {}, [
+                    token.name,
+                    token.workspace ? el('div.tiny.muted', { text: token.workspace }) : null
+                  ]),
+                  el('td', {}, el('code.tiny', { text: token.preview })),
+                  el('td.tiny', { text: token.last_used_at ? ML.timeAgo(token.last_used_at) : 'never' }),
+                  el('td.right', {}, token.revoked
+                    ? el('span.badge.danger', {}, 'Revoked')
+                    : el('button.btn.sm.danger', {
+                        type: 'button',
+                        onclick: function () {
+                          ML.confirm({
+                            title: 'Revoke this token?',
+                            message: 'Anything using it — including the extension — stops working immediately.',
+                            danger: true, confirmLabel: 'Revoke'
+                          }).then(function (yes) {
+                            if (yes) { ML.post('tokens/revoke', { id: token.id }).then(load).catch(ML.toastError); }
+                          });
+                        }
+                      }, 'Revoke'))
+                ]);
+              }))
+            ])));
+          } else {
+            wrap.appendChild(el('p.small.muted', {}, 'No tokens yet.'));
+          }
+
+          wrap.appendChild(el('button.btn.sm.mt', {
+            type: 'button',
+            onclick: function () {
+              var name = el('input', { type: 'text', value: 'Browser extension' });
+              ML.modal({
+                title: 'New API token',
+                body: el('label.field', {}, [el('span', {}, 'What is it for?'), name]),
+                footer: function (api) {
+                  return [
+                    el('button.btn', { type: 'button', onclick: api.close }, 'Cancel'),
+                    el('button.btn.primary', {
+                      type: 'button',
+                      onclick: function () {
+                        ML.post('tokens/create', { name: name.value })
+                          .then(function (created) {
+                            api.close();
+                            showToken(created);
+                            load();
+                          })
+                          .catch(ML.toastError);
+                      }
+                    }, 'Create token')
+                  ];
+                }
+              });
+            }
+          }, '+ New token'));
+        }).catch(function (error) {
+          clear(wrap).appendChild(el('p.small', { text: error.message }));
+        });
+      }
+
+      function showToken(created) {
+        ML.modal({
+          title: 'Your new token',
+          body: [
+            el('p.small', {}, 'Copy this now — it is not shown again.'),
+            ML.copyField(created.token),
+            el('hr'),
+            el('p.small.strong', {}, 'To connect the browser extension:'),
+            el('ol.small.muted', { style: { paddingLeft: '18px', margin: '0 0 12px' } }, [
+              el('li', {}, 'Open the extension\u2019s options page.'),
+              el('li', {}, ['Paste this address: ', el('code', { text: created.site })]),
+              el('li', {}, 'Paste the token above, then Save & test.')
+            ])
+          ],
+          footer: function (api) {
+            return el('button.btn.primary', { type: 'button', onclick: api.close }, 'Done');
+          }
+        });
+      }
+
+      load();
+      return wrap;
     }
 
     /* --- Workspace / branding ---------------------------------------------- */

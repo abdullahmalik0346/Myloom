@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyLoom — extension settings</title>
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+<main class="wrap">
+  <div class="brand"><span class="mark"></span> MyLoom Recorder</div>
+  <div class="card">
+    <h1>Connect to your MyLoom</h1>
+    <p class="muted">This extension records into your own installation. It never sends anything anywhere else.</p>
+
+    <label class="field">
+      <span>Your MyLoom address</span>
+      <input type="url" id="site" placeholder="https://videos.yourdomain.com" autocomplete="off" spellcheck="false">
+      <span class="hint">The address you sign in at, including https://</span>
+    </label>
+
+    <label class="field">
+      <span>API token</span>
+      <input type="password" id="token" placeholder="mlt_…" autocomplete="off" spellcheck="false">
+      <span class="hint">
+        In MyLoom go to <strong>Settings → Profile → API tokens</strong>, create one, and paste it here.
+        <a href="#" id="open-site">Open my MyLoom</a>
+      </span>
+    </label>
+
+    <div class="row">
+      <button class="btn primary" id="save">Save &amp; test connection</button>
+      <button class="btn" id="forget">Disconnect</button>
+    </div>
+    <p id="status" class="status"></p>
+  </div>
+
+  <div class="card">
+    <h2>How it works</h2>
+    <ul class="muted">
+      <li>Click the toolbar icon on any page, choose a mode, and record.</li>
+      <li>A control bar appears on the page with a timer, pause and stop.</li>
+      <li>Chunks upload while you record, so long sessions are safe.</li>
+      <li>When you stop, the share page opens with your link ready.</li>
+      <li>Keyboard shortcut: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> starts and stops.</li>
+    </ul>
+  </div>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>

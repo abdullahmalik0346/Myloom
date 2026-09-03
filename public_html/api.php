@@ -9,6 +9,17 @@ require_once __DIR__ . '/_app/bootstrap.php';
 header('X-Frame-Options: SAMEORIGIN');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 
+// Browser extensions authenticate with a bearer token, never a cookie, so
+// echoing their origin cannot expose a logged-in session.
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if ($origin !== '' && preg_match('#^(chrome-extension|moz-extension|safari-web-extension)://[A-Za-z0-9-]+$#', $origin)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+    header('Vary: Origin');
+    header('Access-Control-Allow-Headers: Authorization, Content-Type, X-CSRF-Token');
+    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+    header('Access-Control-Max-Age: 600');
+}
+
 if (Http::method() === 'OPTIONS') {
     http_response_code(204);
     exit;
@@ -51,6 +62,7 @@ $controllers = [
     'analytics'     => 'AnalyticsController',
     'transcript'    => 'TranscriptController',
     'annotations'   => 'AnnotationController',
+    'tokens'        => 'TokenController',
     'notifications' => 'NotificationController',
     'admin'         => 'AdminController',
 ];
