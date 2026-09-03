@@ -84,6 +84,7 @@ not do at all. Loom's paid tiers (Business / Business + AI) are the reference.
 | Add a clickable link / CTA button | ✅ | Real `<a>` on the share page and in embeds |
 | Blur a region | ✅ | For a password, email or face — see the note below |
 | Shapes: box, circle, arrow | ✅ | Colour and line thickness per shape |
+| Show an overlay only for part of the video | ✅ | Every overlay has its own range, e.g. 1:11 → 2:30. Type the timecode, drag the bar on the timeline, or snap either end to the playhead |
 | Burn edits into the file | ✅ | Re-encodes in your browser; also available as "apply permanently" |
 | Stitch several videos together | ❌ | Not implemented |
 | Cut a section from the middle | ❌ | Not implemented |

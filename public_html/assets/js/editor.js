@@ -32,6 +32,9 @@
     var dirty = false;
 
     var blurWarningNode = null;
+    var timelineNode = el('div.tl');
+    var playhead = null;
+    var timelineDragging = false;
     var stageWrap = el('div', { style: { position: 'relative' } });
     var handleLayer = el('div', {
       style: { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '60' }
@@ -58,8 +61,10 @@
           stageWrap,
           el('div.row.between.mt', {}, [
             timeLabel,
-            el('span.tiny.muted', {}, 'Drag to move · drag the corner to resize')
+            el('span.tiny.muted', {}, 'On the video: drag to move, corner to resize · '
+              + 'On the timeline: drag the bar to shift it, its edges to change when it starts and ends')
           ]),
+          timelineNode,
           el('div.editor-grid.mt', {}, [
             el('div.card', {}, [
               el('div.card-head', {}, el('strong.small', {}, 'Overlays')),
@@ -140,10 +145,11 @@
       trimEnd: video.trim_end,
       showCaptions: false,
       onProgress: function () {
-        timeLabel.textContent = 'At ' + ML.duration(player.absoluteTime());
-        drawHandles();
+        timeLabel.textContent = 'Playhead at ' + ML.timecode(player.absoluteTime(), true);
+        positionPlayhead();
+        if (!timelineDragging) { drawHandles(); }
       },
-      onReady: function () { drawHandles(); }
+      onReady: function () { renderTimeline(); drawHandles(); }
     });
     player.root.appendChild(handleLayer);
 
@@ -154,11 +160,14 @@
     function addItem(type) {
       var now = player.absoluteTime();
       var duration = video.duration || 30;
+      var start = Math.round(now * 10) / 10;
+      var end = Math.round(Math.min(duration || start + 5, start + 5) * 10) / 10;
+      if (end <= start) { end = start + 1; }
       var item = {
         id: 'new-' + Math.random().toString(36).slice(2, 9),
         type: type,
-        start_time: Math.round(now * 10) / 10,
-        end_time: Math.min(duration, Math.round((now + 4) * 10) / 10),
+        start_time: start,
+        end_time: end,
         x: 0.34, y: 0.42, w: 0.32, h: 0.14,
         body: type === 'link' ? 'Learn more' : (type === 'text' ? 'Your text here' : ''),
         url: '',
@@ -189,6 +198,7 @@
       overlayLayer.set(items);
       renderList();
       renderProps();
+      renderTimeline();
       drawHandles();
       var counter = dialog.root.querySelector('.modal-foot .grow');
       if (counter) { counter.textContent = items.length + ' overlay(s)'; }
@@ -199,6 +209,7 @@
     }
 
     function select(item) {
+      if (selected === item) { renderTimeline(); return; }
       selected = item;
       // Jump to where it is visible so the user can see what they picked.
       if (player.absoluteTime() < item.start_time || player.absoluteTime() > item.end_time) {
@@ -318,7 +329,7 @@
             text: item.body || tool.label
           }),
           el('span.tiny.muted.nowrap', {
-            text: ML.duration(item.start_time) + '–' + ML.duration(item.end_time)
+            text: ML.timecode(item.start_time, true) + '–' + ML.timecode(item.end_time, true)
           }),
           el('button.btn.sm.ghost', {
             type: 'button', title: 'Delete',
@@ -381,41 +392,12 @@
         ])));
       }
 
-      fields.push(el('div.row.gap-lg', {}, [
-        el('label.field.grow', {}, [
-          el('span', {}, 'Starts at (s)'),
-          el('div.row', {}, [
-            el('input', {
-              type: 'number', step: '0.1', min: '0', value: String(item.start_time),
-              oninput: function (e) { item.start_time = Number(e.target.value) || 0; change(); }
-            }),
-            el('button.btn.sm', {
-              type: 'button', title: 'Use the current time',
-              onclick: function () {
-                item.start_time = Math.round(player.absoluteTime() * 10) / 10;
-                if (item.end_time <= item.start_time) { item.end_time = item.start_time + 3; }
-                change(); renderProps();
-              }
-            }, '⏱')
-          ])
-        ]),
-        el('label.field.grow', {}, [
-          el('span', {}, 'Ends at (s)'),
-          el('div.row', {}, [
-            el('input', {
-              type: 'number', step: '0.1', min: '0', value: String(item.end_time),
-              oninput: function (e) { item.end_time = Number(e.target.value) || 0; change(); }
-            }),
-            el('button.btn.sm', {
-              type: 'button', title: 'Use the current time',
-              onclick: function () {
-                item.end_time = Math.round(player.absoluteTime() * 10) / 10;
-                change(); renderProps();
-              }
-            }, '⏱')
-          ])
-        ])
-      ]));
+      fields.push(el('div.row.gap-lg', {}, [timeField(item, 'start'), timeField(item, 'end')]));
+      fields.push(el('p.hint', {
+        text: 'Shows from ' + ML.timecode(item.start_time, true) + ' to ' +
+          ML.timecode(item.end_time, true) + '  (' +
+          ML.timecode(Math.max(0, item.end_time - item.start_time), true) + ' on screen)'
+      }));
 
       fields.push(el('div.row.mt', {}, [
         el('button.btn.sm', {
@@ -443,6 +425,219 @@
 
       ML.append(propsNode, fields);
     }
+
+    /**
+     * A start/end field that speaks timecode: type 1:11 or 2:30 rather than
+     * counting seconds. Raw seconds and 1m30s style still parse.
+     */
+    function timeField(item, which) {
+      var key = which === 'start' ? 'start_time' : 'end_time';
+      var input = el('input', {
+        type: 'text',
+        value: ML.timecode(item[key], true),
+        placeholder: 'e.g. 1:11',
+        onchange: commit,
+        onblur: commit
+      });
+
+      function commit() {
+        var parsed = ML.parseTime(input.value);
+        if (parsed === null) {
+          input.value = ML.timecode(item[key], true);
+          ML.toast('Enter a time like 1:11 or 2:30.', 'error');
+          return;
+        }
+        var max = video.duration || parsed;
+        parsed = Math.min(parsed, max);
+        item[key] = Math.round(parsed * 10) / 10;
+
+        // Keep the range the right way round without silently losing the edit.
+        if (which === 'start' && item.end_time <= item.start_time) {
+          item.end_time = Math.min(max, item.start_time + 3);
+        }
+        if (which === 'end' && item.end_time <= item.start_time) {
+          item.start_time = Math.max(0, item.end_time - 3);
+        }
+        dirty = true;
+        overlayLayer.set(items);
+        renderList();
+        renderTimeline();
+        renderProps();
+      }
+
+      return el('label.field.grow', {}, [
+        el('span', { text: which === 'start' ? 'Appears at' : 'Disappears at' }),
+        el('div.row', {}, [
+          input,
+          el('button.btn.sm', {
+            type: 'button', title: 'Use the current playhead position',
+            onclick: function () {
+              item[key] = Math.round(player.absoluteTime() * 10) / 10;
+              if (item.end_time <= item.start_time) {
+                item.end_time = Math.min(video.duration || item.start_time + 3, item.start_time + 3);
+              }
+              dirty = true;
+              overlayLayer.set(items);
+              renderList();
+              renderTimeline();
+              renderProps();
+            }
+          }, '⏱ Now')
+        ])
+      ]);
+    }
+
+    /* --- Timeline --------------------------------------------------------- */
+
+    /**
+     * One track per overlay showing when it is on screen. The bar can be
+     * dragged to shift the whole range and its edges dragged to change the
+     * start or end, which is far quicker than typing times.
+     */
+    function renderTimeline() {
+      clear(timelineNode);
+      var total = video.duration || 0;
+      if (total <= 0) {
+        timelineNode.appendChild(el('p.small.muted', {}, 'Timeline appears once the video length is known.'));
+        return;
+      }
+
+      // Ruler with a few labelled ticks.
+      var ruler = el('div.tl-ruler', {
+        onpointerdown: function (event) {
+          var ratio = ratioFromEvent(event, ruler);
+          player.seekAbsolute(ratio * total);
+        }
+      });
+      var ticks = Math.min(8, Math.max(3, Math.round(total / 15)));
+      for (var i = 0; i <= ticks; i++) {
+        ruler.appendChild(el('span.tl-tick', {
+          style: { left: ((i / ticks) * 100) + '%' },
+          text: ML.duration((i / ticks) * total)
+        }));
+      }
+      timelineNode.appendChild(ruler);
+
+      var tracks = el('div.tl-tracks');
+      items.forEach(function (item) {
+        var tool = TOOLS.filter(function (t) { return t.type === item.type; })[0] || TOOLS[0];
+        var bar = el('div.tl-bar' + (selected === item ? '.active' : ''), {
+          title: tool.label + ' · ' + ML.timecode(item.start_time, true) + '–' + ML.timecode(item.end_time, true),
+          style: {
+            left: ((item.start_time / total) * 100) + '%',
+            width: (Math.max(0.6, ((item.end_time - item.start_time) / total) * 100)) + '%'
+          },
+          onpointerdown: function (event) { beginBarDrag(event, item, 'move', total); }
+        }, [
+          el('span.tl-grip.left', { onpointerdown: function (event) { beginBarDrag(event, item, 'start', total); } }),
+          el('span.tl-label', { text: tool.icon + ' ' + (item.body || tool.label) }),
+          el('span.tl-grip.right', { onpointerdown: function (event) { beginBarDrag(event, item, 'end', total); } })
+        ]);
+
+        var track = el('div.tl-track', {
+          onpointerdown: function (event) {
+            if (event.target === event.currentTarget) {
+              player.seekAbsolute(ratioFromEvent(event, event.currentTarget) * total);
+            }
+          }
+        }, bar);
+        tracks.appendChild(track);
+      });
+
+      if (!items.length) {
+        tracks.appendChild(el('p.small.muted', { style: { padding: '8px 2px' } },
+          'Add an overlay and its time range shows here as a bar you can drag.'));
+      }
+      timelineNode.appendChild(tracks);
+
+      playhead = el('div.tl-playhead');
+      timelineNode.appendChild(playhead);
+      positionPlayhead();
+    }
+
+    function positionPlayhead() {
+      var total = video.duration || 0;
+      if (!playhead || total <= 0) { return; }
+      playhead.style.left = Math.max(0, Math.min(100, (player.absoluteTime() / total) * 100)) + '%';
+    }
+
+    function ratioFromEvent(event, node) {
+      var rect = node.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    }
+
+    /**
+     * Drag a timeline bar or one of its edges.
+     * Selection is applied without re-rendering the timeline: rebuilding it
+     * would detach the node we are capturing the pointer on, and the drag
+     * would never receive a move event.
+     */
+    function beginBarDrag(event, item, mode, total) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      var node = event.currentTarget;
+      var bar = node.classList.contains('tl-bar') ? node : node.closest('.tl-bar');
+      var track = (bar && bar.parentNode) || node.parentNode;
+      var width = track.getBoundingClientRect().width || 1;
+      var startX = event.clientX;
+      var origin = { start: item.start_time, end: item.end_time };
+      var span = origin.end - origin.start;
+
+      try {
+        node.setPointerCapture(event.pointerId);
+      } catch (e) {
+        // Without capture the drag still works while the pointer stays over
+        // the element, so carry on rather than dropping the interaction.
+      }
+      timelineDragging = true;
+
+      if (selected !== item) {
+        selected = item;
+        ML.$$('.tl-bar', timelineNode).forEach(function (b) { b.classList.remove('active'); });
+        if (bar) { bar.classList.add('active'); }
+        renderList();
+        renderProps();
+        drawHandles();
+      }
+
+      var onMove = function (moveEvent) {
+        var delta = ((moveEvent.clientX - startX) / width) * total;
+        if (mode === 'move') {
+          var start = Math.max(0, Math.min(total - span, origin.start + delta));
+          item.start_time = round1(start);
+          item.end_time = round1(start + span);
+        } else if (mode === 'start') {
+          item.start_time = round1(Math.max(0, Math.min(origin.end - 0.3, origin.start + delta)));
+        } else {
+          item.end_time = round1(Math.min(total, Math.max(origin.start + 0.3, origin.end + delta)));
+        }
+        dirty = true;
+        if (bar) {
+          bar.style.left = ((item.start_time / total) * 100) + '%';
+          bar.style.width = Math.max(0.6, ((item.end_time - item.start_time) / total) * 100) + '%';
+          bar.title = ML.timecode(item.start_time, true) + '–' + ML.timecode(item.end_time, true);
+        }
+        overlayLayer.set(items);
+      };
+      var onUp = function (upEvent) {
+        timelineDragging = false;
+        node.removeEventListener('pointermove', onMove);
+        node.removeEventListener('pointerup', onUp);
+        node.removeEventListener('pointercancel', onUp);
+        try { node.releasePointerCapture(upEvent.pointerId); } catch (e) { /* ignore */ }
+        // Land the playhead inside the new range so the result is visible.
+        player.seekAbsolute(Math.min(item.end_time - 0.05, item.start_time + 0.05));
+        renderList();
+        renderTimeline();
+        renderProps();
+      };
+      node.addEventListener('pointermove', onMove);
+      node.addEventListener('pointerup', onUp);
+      node.addEventListener('pointercancel', onUp);
+    }
+
+    function round1(value) { return Math.round(value * 10) / 10; }
 
     function field(label, control, hint) {
       return el('label.field', {}, [

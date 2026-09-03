@@ -271,6 +271,43 @@
     return h > 0 ? h + ':' + pad(m) + ':' + pad(s) : m + ':' + pad(s);
   }
 
+  /**
+   * Parse a timecode into seconds. Accepts "90", "1:30", "1:30.5",
+   * "01:02:03" and "1m30s". Returns null when it cannot be read.
+   */
+  function parseTime(input) {
+    if (typeof input === 'number') { return isFinite(input) ? Math.max(0, input) : null; }
+    var text = String(input == null ? '' : input).trim().toLowerCase();
+    if (text === '') { return null; }
+
+    var loose = text.match(/^(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:([\d.]+)\s*s)?$/);
+    if (loose && (loose[1] || loose[2] || loose[3])) {
+      return Math.max(0, (Number(loose[1] || 0) * 3600) + (Number(loose[2] || 0) * 60) + Number(loose[3] || 0));
+    }
+
+    var parts = text.split(':');
+    if (parts.length > 3 || parts.some(function (p) { return p !== '' && !/^[\d.]+$/.test(p); })) {
+      return null;
+    }
+    var seconds = 0;
+    for (var i = 0; i < parts.length; i++) {
+      var value = Number(parts[i] || 0);
+      if (!isFinite(value)) { return null; }
+      seconds = seconds * 60 + value;
+    }
+    return Math.max(0, seconds);
+  }
+
+  /** Seconds as m:ss / h:mm:ss, keeping tenths when they matter. */
+  function timecode(seconds, withTenths) {
+    seconds = Math.max(0, Number(seconds) || 0);
+    var whole = Math.floor(seconds);
+    var tenth = Math.round((seconds - whole) * 10);
+    if (tenth === 10) { whole += 1; tenth = 0; }
+    var base = duration(whole);
+    return withTenths && tenth > 0 ? base + '.' + tenth : base;
+  }
+
   function bytes(value) {
     value = Number(value) || 0;
     var units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -418,6 +455,7 @@
     get: get, post: post, postRaw: postRaw, postForm: postForm, setCsrf: setCsrf, apiUrl: apiUrl,
     toast: toast, toastError: toastError, modal: modal, confirm: confirmDialog,
     duration: duration, bytes: bytes, timeAgo: timeAgo, dateLabel: dateLabel,
+    parseTime: parseTime, timecode: timecode,
     dateTimeLabel: dateTimeLabel, parseDate: parseDate, initials: initials, avatar: avatar,
     copy: copy, copyField: copyField, debounce: debounce, storage: storage,
     loading: loading, emptyState: emptyState, capabilities: capabilities
