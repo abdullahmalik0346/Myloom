@@ -19,6 +19,7 @@ if (!myloom_installed()) {
 }
 
 Storage::ensure();
+Migrations::run();
 
 /** Resolve the route from PATH_INFO, the rewritten URI, or ?r=. */
 function myloom_route(): string
@@ -49,6 +50,7 @@ $controllers = [
     'comments'      => 'CommentController',
     'analytics'     => 'AnalyticsController',
     'transcript'    => 'TranscriptController',
+    'annotations'   => 'AnnotationController',
     'notifications' => 'NotificationController',
     'admin'         => 'AdminController',
 ];

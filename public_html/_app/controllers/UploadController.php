@@ -60,7 +60,8 @@ final class UploadController
             Http::fail('The server is out of disk space.', 507);
         }
 
-        $abs = Storage::abs((string)$video['file_path']);
+        $target = !empty($session['temp_path']) ? (string)$session['temp_path'] : (string)$video['file_path'];
+        $abs = Storage::abs($target);
         $fh = @fopen($abs, 'ab');
         if (!$fh) {
             Http::fail('Cannot write to storage. Check that _storage is writable (755).', 500);
@@ -231,6 +232,140 @@ final class UploadController
         Db::run('UPDATE workspaces SET storage_used = storage_used + ? WHERE id = ?', [$size, $wsId]);
 
         Http::ok(['uid' => $uid, 'share_url' => Util::url('v/' . $uid)]);
+    }
+
+    /**
+     * POST /api/upload/replace-start — begin uploading a replacement file for
+     * an existing video. Bytes land in a staging file so the original stays
+     * intact until the new one is known-good.
+     */
+    public static function replaceStart(): void
+    {
+        $video = VideoController::find(Http::str('uid'));
+        if (!Permissions::canManageVideo($video)) {
+            Http::fail('You can only replace your own videos.', 403);
+        }
+        $user = Auth::require();
+
+        $mime = Http::str('mime', 'video/webm');
+        $ext = str_contains($mime, 'mp4') ? 'mp4' : 'webm';
+        $temp = '/tmp/replace-' . $video['uid'] . '-' . substr(Util::token(4), 0, 8) . '.' . $ext;
+
+        if (!is_dir(Storage::abs('/tmp'))) {
+            @mkdir(Storage::abs('/tmp'), 0755, true);
+        }
+        if (@file_put_contents(Storage::abs($temp), '') === false) {
+            Http::fail('The storage folder is not writable.', 500);
+        }
+
+        // Clear any half-finished previous attempt for this video.
+        Db::run('DELETE FROM uploads WHERE video_id = ? AND finished = 0 AND temp_path IS NOT NULL',
+            [(int)$video['id']]);
+
+        $uploadKey = Util::token(16);
+        Db::insert('uploads', [
+            'upload_key' => $uploadKey,
+            'video_id'   => (int)$video['id'],
+            'user_id'    => (int)$user['id'],
+            'temp_path'  => $temp,
+            'created_at' => Util::now(),
+            'updated_at' => Util::now(),
+        ]);
+
+        Http::ok(['upload_key' => $uploadKey, 'mime' => $mime]);
+    }
+
+    /**
+     * POST /api/upload/replace-finish — swap the staged file in.
+     * Trim and overlays are baked into the new file, so both are cleared to
+     * avoid applying them a second time on playback.
+     */
+    public static function replaceFinish(): void
+    {
+        Auth::require();
+        $session = self::session();
+        if (empty($session['temp_path'])) {
+            Http::fail('This upload is not a replacement.', 400);
+        }
+        $video = Db::one('SELECT * FROM videos WHERE id = ?', [(int)$session['video_id']]);
+        if (!$video || !Permissions::canManageVideo($video)) {
+            Http::fail('You can only replace your own videos.', 403);
+        }
+
+        $temp = (string)$session['temp_path'];
+        $size = Storage::size($temp);
+        if ($size < 1024) {
+            Storage::delete($temp);
+            Db::run('DELETE FROM uploads WHERE id = ?', [(int)$session['id']]);
+            Http::fail('The replacement file was empty, so nothing was changed.', 422);
+        }
+
+        $mime = Http::str('mime', (string)$video['mime']);
+        $ext = str_contains($mime, 'mp4') ? 'mp4' : 'webm';
+        $newPath = Storage::videoPath((string)$video['uid'], $ext);
+        $oldPath = (string)$video['file_path'];
+        $oldSize = (int)$video['size_bytes'];
+
+        // Move the staged file into place, then drop the original.
+        if (!@rename(Storage::abs($temp), Storage::abs($newPath))) {
+            if (!@copy(Storage::abs($temp), Storage::abs($newPath))) {
+                Http::fail('The new file could not be moved into place.', 500);
+            }
+            Storage::delete($temp);
+        }
+        if ($oldPath !== '' && $oldPath !== $newPath) {
+            Storage::delete($oldPath);
+        }
+
+        $duration = Http::float('duration');
+        $data = [
+            'file_path'  => $newPath,
+            'mime'       => $mime,
+            'size_bytes' => $size,
+            'trim_start' => 0,
+            'trim_end'   => null,
+            'status'     => 'ready',
+            'updated_at' => Util::now(),
+        ];
+        if ($duration > 0) {
+            $data['duration'] = round($duration, 2);
+        }
+        if (Http::int('width') > 0) {
+            $data['width'] = Http::int('width');
+            $data['height'] = Http::int('height');
+        }
+
+        $clearAnnotations = Http::bool('clear_annotations', true);
+
+        Db::transaction(static function () use ($data, $video, $session, $size, $oldSize, $clearAnnotations) {
+            Db::update('videos', $data, 'id = ?', [(int)$video['id']]);
+            if ($clearAnnotations) {
+                Db::run('DELETE FROM annotations WHERE video_id = ?', [(int)$video['id']]);
+            }
+            Db::run('DELETE FROM uploads WHERE id = ?', [(int)$session['id']]);
+            Db::run(
+                'UPDATE workspaces SET storage_used = GREATEST(0, CAST(storage_used AS SIGNED) - ? + ?) WHERE id = ?',
+                [$oldSize, $size, (int)$video['workspace_id']]
+            );
+        });
+
+        Http::ok([
+            'uid'        => $video['uid'],
+            'size'       => $size,
+            'size_human' => Util::bytes($size),
+        ]);
+    }
+
+    /** POST /api/upload/replace-abort — throw away a staged replacement. */
+    public static function replaceAbort(): void
+    {
+        Auth::require();
+        $session = self::session();
+        if (!empty($session['temp_path'])) {
+            Storage::delete((string)$session['temp_path']);
+        }
+        Db::run('DELETE FROM uploads WHERE id = ?', [(int)$session['id']]);
+        Http::ok();
     }
 
     /** GET /api/upload/limits — surfaced in the UI so users know the server's ceilings. */

@@ -118,10 +118,30 @@
             el('div.side-body.col', {}, [
               ML.copyField(video.share_url),
               el('button.btn.block', {
-                type: 'button', onclick: function () { window.open(video.media_url + '&dl=1', '_blank'); }
-              }, '⬇ Download video'),
+                type: 'button', onclick: function () { ML.Export.open({ video: video }); }
+              }, '⬇ Download (WebM / MP4)'),
               el('button.btn.block', { type: 'button', onclick: function () { embedDialog(video); } }, '</> Embed code'),
               el('button.btn.block', { type: 'button', onclick: function () { thumbnailDialog(video, refresh); } }, '🖼 Set thumbnail'),
+              el('button.btn.block', {
+                type: 'button',
+                onclick: function () {
+                  ML.AnnotationEditor.open({ video: video, onSaved: function () { refresh(); } });
+                }
+              }, [
+                '✏️ Text, links, blur & shapes',
+                video.annotations && video.annotations.length
+                  ? el('span.badge.accent', { style: { marginLeft: '6px' } }, String(video.annotations.length))
+                  : null
+              ]),
+              (video.annotations && video.annotations.length) || video.trim_start > 0 || video.trim_end
+                ? el('button.btn.block', {
+                    type: 'button',
+                    title: 'Re-encode so overlays and trim become part of the file',
+                    onclick: function () {
+                      ML.Export.applyPermanently({ video: video, onDone: refresh });
+                    }
+                  }, '🔒 Apply overlays & trim permanently')
+                : null,
               el('button.btn.block', { type: 'button', onclick: function () { trimDialog(video, player, refresh); } }, '✂️ Trim'),
               el('button.btn.block', { type: 'button', onclick: function () { chaptersDialog(video, player, refresh); } }, '📑 Chapters')
             ])
@@ -150,6 +170,7 @@
         trimEnd: video.trim_end,
         chapters: video.chapters || []
       });
+      ML.Overlays.attach(player, video.annotations || []);
       loadCaptionsInto(player);
 
       ML.CommentsPanel(commentsNode, {
@@ -562,7 +583,7 @@
       var requireEmail = el('input', { type: 'checkbox', checked: video.require_email });
       var ctaLabel = el('input', { type: 'text', value: video.cta_label || '', placeholder: 'Book a call' });
       var ctaUrl = el('input', { type: 'url', value: video.cta_url || '', placeholder: 'https://…' });
-      var spaceSelect = el('select', {}, [el('option', { value: '0' }, 'No space')]
+      var spaceSelect = el('select', {}, [el('option', { value: '0' }, 'No folder')]
         .concat((App.state.spaces || []).map(function (space) {
           return el('option', { value: String(space.id) }, space.name);
         })));
@@ -573,7 +594,7 @@
           el('h3', {}, 'Details'),
           el('label.field', {}, [el('span', {}, 'Title'), title]),
           el('label.field', {}, [el('span', {}, 'Description'), description]),
-          el('label.field', {}, [el('span', {}, 'Space'), spaceSelect])
+          el('label.field', {}, [el('span', {}, 'Folder'), spaceSelect])
         ]),
         el('div.section', {}, [
           el('h3', {}, 'Privacy'),

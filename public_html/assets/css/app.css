@@ -249,7 +249,7 @@ fieldset { border: 0; margin: 0; padding: 0; }
 .nav-item:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .nav-item .ico { width: 18px; text-align: center; flex: none; font-size: 15px; }
-.nav-item .count { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+.nav-item .count { margin-left: auto; font-size: 11.5px; color: var(--muted); flex: none; }
 .space-dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
 .sidebar-foot { padding: 12px; border-top: 1px solid var(--line); }
 .storage-bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 7px 0 5px; }
@@ -546,6 +546,32 @@ table.data tr:hover td { background: var(--surface-2); }
 .chapter-item { display: flex; gap: 10px; padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 13.5px; }
 .chapter-item:hover { background: var(--surface-2); }
 .chapter-item time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; font-size: 12.5px; }
+
+/* --- Annotation editor ---------------------------------------------------- */
+.modal.editor-modal { max-width: 1040px; }
+.editor-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+/* Cap the stage by width so the 16:9 ratio holds and the panels below stay
+   visible without scrolling the dialog. */
+.editor .player { max-width: min(100%, calc(46vh * 16 / 9)); margin: 0 auto; }
+.editor-grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 14px; align-items: start; }
+.ov-row {
+  display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 13.5px; border: 1px solid transparent;
+}
+.ov-row:hover { background: var(--surface-2); }
+.ov-row.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.overlay-layer .ov { pointer-events: none; }
+.overlay-layer .ov-link { pointer-events: auto; }
+.nav-more {
+  margin-left: 4px; padding: 0 4px; border-radius: 4px; color: var(--muted);
+  opacity: 0; font-size: 15px; line-height: 1;
+}
+.nav-item:hover .nav-more { opacity: 1; }
+.nav-more:hover { background: var(--line); color: var(--text); }
+
+@media (max-width: 780px) {
+  .editor-grid { grid-template-columns: 1fr; }
+}
 
 /* --- Copy field ----------------------------------------------------------- */
 .copy-field { display: flex; gap: 8px; }

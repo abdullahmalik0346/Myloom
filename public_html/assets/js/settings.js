@@ -225,8 +225,9 @@
           }
         }, 'Save workspace') : null,
         el('div.section.mt-lg', {}, [
-          el('h3', {}, 'Spaces'),
-          el('p.hint', {}, 'Spaces are folders for organising videos.'),
+          el('h3', {}, 'Folders'),
+          el('p.hint', {}, 'Folders group videos inside this workspace. You can also manage them '
+            + 'from the sidebar.'),
           spacesEditor()
         ])
       ]));
@@ -247,20 +248,16 @@
               el('button.btn.sm.ghost', {
                 type: 'button',
                 onclick: function () {
-                  var name = window.prompt('Rename space', space.name);
-                  if (name === null) { return; }
-                  ML.post('spaces/update', { id: space.id, name: name })
-                    .then(function () { return App.loadSpaces(); })
-                    .then(render).catch(ML.toastError);
+                  App.editSpaceDialog(space, render);
                 }
               }, 'Rename'),
               el('button.btn.sm.ghost', {
                 type: 'button',
                 onclick: function () {
                   ML.confirm({
-                    title: 'Delete “' + space.name + '”?',
-                    message: 'Videos inside it move back to the workspace root; nothing is deleted.',
-                    danger: true, confirmLabel: 'Delete space'
+                    title: 'Delete folder “' + space.name + '”?',
+                    message: 'Videos inside it move back to the library root; nothing is deleted.',
+                    danger: true, confirmLabel: 'Delete folder'
                   }).then(function (yes) {
                     if (!yes) { return; }
                     ML.post('spaces/delete', { id: space.id })
@@ -273,12 +270,12 @@
           ]));
         });
         if (!(App.state.spaces || []).length) {
-          listNode.appendChild(el('p.small.muted', {}, 'No spaces yet.'));
+          listNode.appendChild(el('p.small.muted', {}, 'No folders yet.'));
         }
         listNode.appendChild(el('button.btn.sm.mt', {
           type: 'button',
           onclick: function () { App.newSpaceDialog(function () { render(); }); }
-        }, '+ New space'));
+        }, '+ New folder'));
       }
       render();
       return listNode;

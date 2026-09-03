@@ -246,6 +246,7 @@ CREATE TABLE IF NOT EXISTS `uploads` (
   `received`    BIGINT UNSIGNED NOT NULL DEFAULT 0,
   `chunks`      INT UNSIGNED NOT NULL DEFAULT 0,
   `finished`    TINYINT(1) NOT NULL DEFAULT 0,
+  `temp_path`   VARCHAR(255) DEFAULT NULL,
   `created_at`  DATETIME NOT NULL,
   `updated_at`  DATETIME NOT NULL,
   PRIMARY KEY (`id`),
@@ -268,5 +269,28 @@ CREATE TABLE IF NOT EXISTS `settings` (
   `v` TEXT,
   PRIMARY KEY (`k`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `annotations` (
+              `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `video_id`      INT UNSIGNED NOT NULL,
+              `type`          ENUM("text","link","blur","rect","ellipse","arrow") NOT NULL DEFAULT "text",
+              `start_time`    DECIMAL(10,2) NOT NULL DEFAULT 0,
+              `end_time`      DECIMAL(10,2) NOT NULL DEFAULT 0,
+              `x`             DECIMAL(6,5) NOT NULL DEFAULT 0.1,
+              `y`             DECIMAL(6,5) NOT NULL DEFAULT 0.1,
+              `w`             DECIMAL(6,5) NOT NULL DEFAULT 0.3,
+              `h`             DECIMAL(6,5) NOT NULL DEFAULT 0.1,
+              `body`          VARCHAR(500) DEFAULT NULL,
+              `url`           VARCHAR(500) DEFAULT NULL,
+              `color`         VARCHAR(9) NOT NULL DEFAULT "#ffffff",
+              `background`    VARCHAR(9) DEFAULT NULL,
+              `font_size`     DECIMAL(5,4) NOT NULL DEFAULT 0.05,
+              `stroke_width`  DECIMAL(5,4) NOT NULL DEFAULT 0.006,
+              `intensity`     TINYINT UNSIGNED NOT NULL DEFAULT 12,
+              `z_index`       SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+              `created_at`    DATETIME NOT NULL,
+              PRIMARY KEY (`id`),
+              KEY `idx_annotation_video` (`video_id`,`start_time`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

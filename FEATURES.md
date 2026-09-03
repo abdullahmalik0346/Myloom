@@ -80,20 +80,48 @@ not do at all. Loom's paid tiers (Business / Business + AI) are the reference.
 |---|---|---|
 | Trim start and end | ✅ | Stored as playback boundaries, so it is non-destructive and reversible |
 | Chapters | ✅ | Manual, or generated from a transcript |
-| Stitch several videos together | ❌ | Needs re-encoding |
-| Cut a section from the middle | ❌ | Same reason |
+| Add text on the video | ✅ | Timed, positioned, sized, coloured, with an optional background |
+| Add a clickable link / CTA button | ✅ | Real `<a>` on the share page and in embeds |
+| Blur a region | ✅ | For a password, email or face — see the note below |
+| Shapes: box, circle, arrow | ✅ | Colour and line thickness per shape |
+| Burn edits into the file | ✅ | Re-encodes in your browser; also available as "apply permanently" |
+| Stitch several videos together | ❌ | Not implemented |
+| Cut a section from the middle | ❌ | Not implemented |
 
-Trimming does not re-encode. Shared hosting rarely has `ffmpeg`, and running it
-would block a PHP request for minutes. Boundaries are applied by the player, the
-embed and the share page instead — the trade-off is that a downloaded file is
-still the full recording.
+**How editing works here.** Trim and overlays are stored as metadata and drawn
+by the player, so edits are instant and reversible, and nothing is re-encoded
+on your server (shared hosting has no `ffmpeg`, and running it would block a PHP
+request for minutes). When you need them to be part of the file itself — to
+download a flattened copy, or to genuinely remove what a blur covers — MyLoom
+re-encodes in the browser via canvas + MediaRecorder, either as a one-off
+download or with **Apply overlays & trim permanently**, which replaces the
+stored file.
+
+> **Blur is cosmetic until you bake it in.** A blur drawn by the player hides
+> the area on screen, but the original pixels are still in the video file, so a
+> determined viewer could recover them. If you are hiding a password or personal
+> data, use *Apply overlays & trim permanently* — that re-encodes the video and
+> the covered pixels are gone. The editor says this wherever a blur is in use.
+
+## Download formats
+
+| Loom paid | MyLoom | Notes |
+|---|---|---|
+| Download MP4 | ⚠️ | Offered whenever your browser can encode H.264 (Chrome, Edge, Safari). Firefox can only produce WebM |
+| Choose the download format | ✅ | Pick WebM or MP4 per download; the original is served untouched when it already matches |
+| Choose the resolution | ✅ | Original, 1080p or 720p |
+
+Conversion happens in your browser and runs in real time — a 10-minute video
+takes about 10 minutes — so the dialog tells you the estimate before you start.
+When you ask for the format the file is already in, with no overlays or trim to
+apply, the original bytes are served instantly with no quality loss.
 
 ## Teams
 
 | Loom paid | MyLoom | Notes |
 |---|---|---|
 | Workspaces | ✅ | Unlimited, switchable |
-| Spaces / folders | ✅ | Colour-coded, with counts |
+| Folders | ✅ | Colour-coded with video counts, in the sidebar and the library toolbar; rename, recolour, delete, and bulk-move videos in |
 | Roles and permissions | ✅ | Owner, admin, member, viewer |
 | Email invitations | ✅ | With a copyable link if mail is not configured |
 | Custom branding | ✅ | Logo, accent colour, and the "Powered by" line can be removed |
@@ -118,11 +146,15 @@ roughly eight hours of video.
 2. **WebM will not play on iPhones.** Chrome and Safari record H.264/MP4 where
    the machine supports it, and MyLoom prefers that automatically. Firefox can
    only produce WebM, which Apple devices refuse to play. Record in Chrome,
-   Edge or Safari if your audience is on iOS.
+   Edge or Safari if your audience is on iOS — or convert an existing WebM to
+   MP4 from the Download dialog.
 3. **Live transcription is Chrome/Edge only** and noticeably rougher than a
    server-side model. You can always paste a better transcript in afterwards.
 4. **Seeking a long WebM recording can be imprecise.** MediaRecorder does not
    write a seek index; the player works around it, but MP4 recordings behave
    better.
-5. **No background jobs.** Everything happens in the request that triggers it,
+5. **Browser-side conversion is real time and needs the tab in the foreground.**
+   Background tabs get throttled, which stalls the encoder. For very long
+   videos, download the original instead.
+6. **No background jobs.** Everything happens in the request that triggers it,
    which is what keeps it deployable on shared hosting without cron or workers.

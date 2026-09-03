@@ -86,7 +86,7 @@ $boot = [
 <div id="toasts" class="toasts" aria-live="polite"></div>
 <div id="modal-root"></div>
 
-<?php foreach (['core', 'player', 'comments', 'watch'] as $script): ?>
+<?php foreach (['core', 'player', 'overlays', 'export', 'comments', 'watch'] as $script): ?>
 <script src="<?= Util::e(Util::url('assets/js/' . $script . '.js?v=' . MYLOOM)) ?>"></script>
 <?php endforeach; ?>
 </body>

@@ -129,7 +129,10 @@
     var actions = el('div.watch-actions', {}, [
       el('button.btn', { type: 'button', onclick: function () { ML.copy(video.share_url); } }, '🔗 Copy link'),
       video.download_url
-        ? el('a.btn', { href: video.download_url }, '⬇ Download')
+        ? el('button.btn', {
+            type: 'button',
+            onclick: function () { ML.Export.open({ video: video, annotations: video.annotations }); }
+          }, '⬇ Download')
         : null,
       el('button.btn', {
         type: 'button',
@@ -244,6 +247,8 @@
         ML.toast('This video could not be played. It may still be processing.', 'error');
       }
     });
+
+    ML.Overlays.attach(player, video.annotations || []);
 
     if (video.captions_url) {
       ML.get('transcript/get', query()).then(function (response) {

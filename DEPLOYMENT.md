@@ -228,6 +228,9 @@ mod_security rule is capping request bodies. Lower the chunk size: in
 1. Back up the database and `_storage/`.
 2. Upload the new files over the old ones, **keeping** `_app/config.local.php`
    and the `_storage/` folder.
-3. If the release notes mention schema changes, import the new
-   `database/schema.sql` via phpMyAdmin — every statement uses
-   `CREATE TABLE IF NOT EXISTS`, so it is safe to re-run.
+3. Nothing else. Database changes apply themselves: MyLoom compares a stored
+   schema version against the code on the first request after an upload and
+   runs whatever is missing. You never need phpMyAdmin for an update.
+
+If you would rather apply the schema by hand, importing `database/schema.sql`
+in phpMyAdmin is still safe — every statement uses `CREATE TABLE IF NOT EXISTS`.

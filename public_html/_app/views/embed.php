@@ -32,6 +32,8 @@ $boot = [
 <div id="watch-root" class="embed-root"></div>
 <script src="<?= Util::e(Util::url('assets/js/core.js?v=' . MYLOOM)) ?>"></script>
 <script src="<?= Util::e(Util::url('assets/js/player.js?v=' . MYLOOM)) ?>"></script>
+<script src="<?= Util::e(Util::url('assets/js/overlays.js?v=' . MYLOOM)) ?>"></script>
+<script src="<?= Util::e(Util::url('assets/js/export.js?v=' . MYLOOM)) ?>"></script>
 <script src="<?= Util::e(Util::url('assets/js/watch.js?v=' . MYLOOM)) ?>"></script>
 </body>
 </html>

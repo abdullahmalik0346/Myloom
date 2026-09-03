@@ -97,6 +97,7 @@ final class WatchController
             'captions_url' => Db::value('SELECT id FROM transcripts WHERE video_id = ? LIMIT 1', [(int)$video['id']])
                 ? Util::url('file.php?c=' . rawurlencode((string)$video['uid']))
                 : null,
+            'annotations'  => AnnotationController::forVideo((int)$video['id']),
             'embed_code'   => VideoController::embedCode((string)$video['uid']),
             'share_url'    => $share ? Util::url('s/' . $share['token']) : Util::url('v/' . $video['uid']),
         ];

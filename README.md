@@ -22,8 +22,13 @@ how far they got, where they dropped off, and what they said in the comments.
   per-second attention graph, devices, traffic sources and CSV export
 - **Collaborate** — timestamped comments, threaded replies, emoji reactions,
   workspaces, spaces (folders), roles and email invitations
-- **Polish** — trim, chapters, custom thumbnails, call-to-action buttons,
-  captions, transcript search, AI or offline summaries, your own logo and colour
+- **Edit** — trim, chapters, custom thumbnails, and on-video overlays: text,
+  clickable links, blur boxes for anything sensitive, plus boxes, circles and
+  arrows. Bake them into the file when you need to
+- **Download** — pick WebM or MP4 and the resolution; converted in your browser,
+  so no `ffmpeg` is needed on the server
+- **Polish** — captions, transcript search, AI or offline summaries, call-to-action
+  buttons, your own logo and colour
 
 See [FEATURES.md](FEATURES.md) for a feature-by-feature comparison with paid
 Loom, including the things this deliberately does not do.
@@ -98,3 +103,7 @@ MIT — see [LICENSE](LICENSE).
 | Per-video analytics | Workspace dashboard |
 |---|---|
 | ![Analytics](docs/screenshots/analytics.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+
+| Overlay editor | Overlays on the share page |
+|---|---|
+| ![Overlay editor](docs/screenshots/editor.png) | ![Overlays](docs/screenshots/overlays.png) |

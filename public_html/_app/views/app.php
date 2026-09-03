@@ -38,7 +38,8 @@ $boot = [
 <div id="modal-root"></div>
 
 <?php foreach ([
-    'core', 'player', 'recorder', 'comments', 'views', 'record', 'video', 'settings', 'app'
+    'core', 'player', 'overlays', 'export', 'recorder', 'comments', 'editor',
+    'views', 'record', 'video', 'settings', 'app'
 ] as $script): ?>
 <script src="<?= Util::e(Util::url('assets/js/' . $script . '.js?v=' . MYLOOM)) ?>"></script>
 <?php endforeach; ?>

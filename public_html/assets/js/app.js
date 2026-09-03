@@ -250,27 +250,36 @@
       }, [el('span.ico', { text: item.icon }), el('span', { text: item.label })]));
     });
 
-    navNode.appendChild(el('div.nav-label', {}, [
-      el('span', {}, 'Spaces'),
-      el('button.btn.sm.ghost', {
-        type: 'button', title: 'New space', style: { padding: '2px 6px' },
-        onclick: function () { App.newSpaceDialog(); }
-      }, '+')
-    ]));
+    navNode.appendChild(el('div.nav-label', {}, el('span', {}, 'Folders')));
 
     if (!App.state.spaces.length) {
-      navNode.appendChild(el('p.tiny.muted', { style: { padding: '2px 10px' } }, 'No spaces yet.'));
+      navNode.appendChild(el('p.tiny.muted', { style: { padding: '2px 10px 6px' } },
+        'Group your videos into folders.'));
     }
     App.state.spaces.forEach(function (space) {
-      navNode.appendChild(el('button.nav-item', {
+      var item = el('button.nav-item', {
         type: 'button', dataset: { nav: 'space-' + space.id },
-        onclick: function () { App.go('/space/' + space.id); closeSidebar(); }
+        onclick: function () { App.go('/space/' + space.id); closeSidebar(); },
+        oncontextmenu: function (event) { event.preventDefault(); App.folderMenu(event.currentTarget, space); }
       }, [
         el('i.space-dot', { style: { background: space.color } }),
         el('span.truncate', { text: space.name }),
-        el('span.count', { text: String(space.video_count) })
-      ]));
+        el('span.count', { text: String(space.video_count) }),
+        el('span.nav-more', {
+          title: 'Rename or delete',
+          onclick: function (event) {
+            event.stopPropagation();
+            App.folderMenu(item, space);
+          }
+        }, '⋯')
+      ]);
+      navNode.appendChild(item);
     });
+
+    navNode.appendChild(el('button.nav-item', {
+      type: 'button', style: { color: 'var(--accent)' },
+      onclick: function () { App.newSpaceDialog(); }
+    }, [el('span.ico', {}, '＋'), el('span', {}, 'New folder')]));
 
     navNode.appendChild(el('div.nav-label', {}, el('span', {}, 'Account')));
     navNode.appendChild(el('button.nav-item', {
@@ -387,13 +396,88 @@
     return wrap;
   }
 
-  /* --- Spaces -------------------------------------------------------------- */
+  /* --- Folders (stored as "spaces") ---------------------------------------- */
+
+  /** Rename, recolour or delete a folder straight from the sidebar. */
+  App.folderMenu = function (anchor, space) {
+    var existing = document.querySelector('.folder-menu');
+    if (existing) { existing.remove(); }
+
+    var menu = el('div.dropdown-menu.folder-menu', { style: { position: 'fixed', zIndex: '7000' } }, [
+      el('button.dropdown-item', {
+        type: 'button',
+        onclick: function () { close(); App.go('/space/' + space.id); }
+      }, '📂 Open folder'),
+      el('button.dropdown-item', {
+        type: 'button',
+        onclick: function () { close(); App.editSpaceDialog(space); }
+      }, '✎ Rename / recolour'),
+      el('div.dropdown-sep'),
+      el('button.dropdown-item.danger', {
+        type: 'button',
+        onclick: function () {
+          close();
+          ML.confirm({
+            title: 'Delete “' + space.name + '”?',
+            message: 'The folder is removed. Its ' + space.video_count +
+              ' video(s) move back to the library — nothing is deleted.',
+            danger: true, confirmLabel: 'Delete folder'
+          }).then(function (yes) {
+            if (!yes) { return; }
+            ML.post('spaces/delete', { id: space.id })
+              .then(function () { return App.loadSpaces(); })
+              .then(function () { ML.toast('Folder deleted'); App.go('/'); })
+              .catch(ML.toastError);
+          });
+        }
+      }, '🗑 Delete folder')
+    ]);
+
+    function close() {
+      menu.remove();
+      document.removeEventListener('click', onDoc, true);
+    }
+    function onDoc(event) { if (!menu.contains(event.target)) { close(); } }
+
+    document.body.appendChild(menu);
+    var rect = anchor.getBoundingClientRect();
+    menu.style.left = Math.min(window.innerWidth - 230, rect.left + 12) + 'px';
+    menu.style.top = (rect.bottom + 4) + 'px';
+    setTimeout(function () { document.addEventListener('click', onDoc, true); }, 10);
+  };
+
+  App.editSpaceDialog = function (space, onDone) {
+    var name = el('input', { type: 'text', value: space.name });
+    var color = el('input', { type: 'color', value: space.color || '#625df5' });
+    ML.modal({
+      title: 'Edit folder',
+      body: [
+        el('label.field', {}, [el('span', {}, 'Name'), name]),
+        el('label.field', {}, [el('span', {}, 'Colour'), color])
+      ],
+      footer: function (api) {
+        return [
+          el('button.btn', { type: 'button', onclick: api.close }, 'Cancel'),
+          el('button.btn.primary', {
+            type: 'button',
+            onclick: function () {
+              if (!name.value.trim()) { ML.toast('Give it a name.', 'error'); return; }
+              ML.post('spaces/update', { id: space.id, name: name.value, color: color.value })
+                .then(function () { api.close(); return App.loadSpaces(); })
+                .then(function () { ML.toast('Folder updated', 'success'); if (onDone) { onDone(); } })
+                .catch(ML.toastError);
+            }
+          }, 'Save')
+        ];
+      }
+    });
+  };
 
   App.newSpaceDialog = function (onDone) {
     var name = el('input', { type: 'text', placeholder: 'Product demos' });
     var color = el('input', { type: 'color', value: '#625df5' });
     ML.modal({
-      title: 'New space',
+      title: 'New folder',
       body: [
         el('label.field', {}, [el('span', {}, 'Name'), name]),
         el('label.field', {}, [el('span', {}, 'Colour'), color])
@@ -410,7 +494,7 @@
                 .then(function () { renderNav(); if (onDone) { onDone(); } })
                 .catch(ML.toastError);
             }
-          }, 'Create space')
+          }, 'Create folder')
         ];
       }
     });

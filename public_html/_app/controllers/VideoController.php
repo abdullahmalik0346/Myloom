@@ -160,6 +160,7 @@ final class VideoController
             [(int)$video['id']]
         );
         $data['has_transcript'] = (bool)Db::value('SELECT id FROM transcripts WHERE video_id = ? LIMIT 1', [(int)$video['id']]);
+        $data['annotations'] = AnnotationController::forVideo((int)$video['id']);
         Http::ok(['video' => $data]);
     }
 
@@ -376,7 +377,8 @@ final class VideoController
         Storage::delete($video['file_path'] ?? null);
         Storage::delete($video['thumbnail'] ?? null);
         Db::transaction(static function () use ($id, $video) {
-            foreach (['comments', 'reactions', 'views', 'engagement', 'share_links', 'transcripts', 'video_chapters', 'uploads', 'notifications'] as $table) {
+            foreach (['comments', 'reactions', 'views', 'engagement', 'share_links', 'transcripts',
+                      'video_chapters', 'annotations', 'uploads', 'notifications'] as $table) {
                 Db::run("DELETE FROM `{$table}` WHERE video_id = ?", [$id]);
             }
             Db::run('UPDATE workspaces SET storage_used = GREATEST(0, CAST(storage_used AS SIGNED) - ?) WHERE id = ?',

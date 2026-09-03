@@ -33,6 +33,7 @@ require_once APP_DIR . '/Auth.php';
 require_once APP_DIR . '/Storage.php';
 require_once APP_DIR . '/Permissions.php';
 require_once APP_DIR . '/Mailer.php';
+require_once APP_DIR . '/Migrations.php';
 
 /**
  * Controllers reference each other freely (AuthController needs WorkspaceController,

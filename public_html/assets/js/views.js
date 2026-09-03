@@ -86,7 +86,7 @@
       el('button.dropdown-item', {
         type: 'button',
         onclick: function () { close(); moveDialog([video.uid], context); }
-      }, ['📁 Move to space']),
+      }, ['📁 Move to folder']),
       el('div.dropdown-sep'),
       el('button.dropdown-item.danger', {
         type: 'button',
@@ -120,14 +120,14 @@
   }
 
   function moveDialog(uids, context) {
-    var select = el('select', {}, [el('option', { value: '0' }, 'No space (workspace root)')]
+    var select = el('select', {}, [el('option', { value: '0' }, 'Library root (no folder)')]
       .concat((App.state.spaces || []).map(function (space) {
         return el('option', { value: String(space.id) }, space.name);
       })));
 
     ML.modal({
       title: uids.length > 1 ? 'Move ' + uids.length + ' videos' : 'Move video',
-      body: el('label.field', {}, [el('span', {}, 'Destination space'), select]),
+      body: el('label.field', {}, [el('span', {}, 'Destination folder'), select]),
       footer: function (api) {
         return [
           el('button.btn', { type: 'button', onclick: api.close }, 'Cancel'),
@@ -224,10 +224,41 @@
     clear(root).appendChild(el('div', {}, [
       el('div.page-head', {}, [
         el('div', {}, [
-          el('h1', { text: spaceName || 'Library' }),
-          el('p.muted.small', { text: 'Record, organise and share your videos.' })
+          spaceName
+            ? el('div.row.tiny.muted', { style: { marginBottom: '2px' } }, [
+                el('a', {
+                  href: '#',
+                  onclick: function (event) { event.preventDefault(); App.go('/'); }
+                }, 'Library'),
+                el('span', {}, '/'),
+                el('span', {}, 'Folder')
+              ])
+            : null,
+          el('div.row', {}, [
+            el('h1', { text: spaceName || 'Library' }),
+            spaceName
+              ? el('button.btn.sm.ghost', {
+                  type: 'button', title: 'Rename, recolour or delete this folder',
+                  onclick: function (event) {
+                    var folder = (App.state.spaces || []).filter(function (sp) {
+                      return String(sp.id) === String(state.spaceId);
+                    })[0];
+                    if (folder) { App.folderMenu(event.currentTarget, folder); }
+                  }
+                }, '⋯')
+              : null
+          ]),
+          el('p.muted.small', {
+            text: spaceName
+              ? 'Videos in this folder.'
+              : 'Record, organise and share your videos.'
+          })
         ]),
         el('div.row', {}, [
+          el('button.btn', {
+            type: 'button', title: 'Create a folder to group videos',
+            onclick: function () { App.newSpaceDialog(function () { load(); }); }
+          }, '📁 New folder'),
           el('button.btn', { type: 'button', onclick: function () { uploadDialog(load); } }, '⬆ Upload'),
           el('button.btn.primary', { type: 'button', onclick: function () { App.go('/record'); } }, '⏺ New recording')
         ])
@@ -249,7 +280,7 @@
       clear(bulkBar).appendChild(el('div.row.between.wrap', {}, [
         el('strong', { text: ids.length + ' selected' }),
         el('div.row', {}, [
-          el('button.btn.sm', { type: 'button', onclick: function () { moveDialog(ids, { reload: load }); } }, 'Move to space'),
+          el('button.btn.sm', { type: 'button', onclick: function () { moveDialog(ids, { reload: load }); } }, 'Move to folder'),
           el('button.btn.sm.danger', {
             type: 'button',
             onclick: function () {
