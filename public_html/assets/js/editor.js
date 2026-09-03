@@ -143,6 +143,7 @@
       fallbackDuration: video.duration,
       trimStart: video.trim_start,
       trimEnd: video.trim_end,
+      segments: video.segments,
       showCaptions: false,
       onProgress: function () {
         timeLabel.textContent = 'Playhead at ' + ML.timecode(player.absoluteTime(), true);

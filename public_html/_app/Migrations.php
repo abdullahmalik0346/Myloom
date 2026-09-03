@@ -10,7 +10,7 @@
 final class Migrations
 {
     /** Bump this when adding a migration below. */
-    public const VERSION = 3;
+    public const VERSION = 4;
 
     public static function run(): void
     {
@@ -26,11 +26,27 @@ final class Migrations
             if ($current < 3) {
                 self::v3ReplaceMedia();
             }
+            if ($current < 4) {
+                self::v4Segments();
+            }
             Config::putSetting('schema_version', (string)self::VERSION);
         } catch (Throwable $e) {
             // A failed migration must not take the whole app down; log and carry
             // on so the rest of the site still works.
             error_log('[myloom][migrate] ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * v4 — keep-segments. A video becomes an ordered list of ranges to play,
+     * which covers cutting the middle out, stitching pieces and reordering.
+     * A single segment is the same thing as the old trim.
+     */
+    private static function v4Segments(): void
+    {
+        $has = Db::one("SHOW COLUMNS FROM `videos` LIKE 'segments'");
+        if (!$has) {
+            Db::pdo()->exec('ALTER TABLE `videos` ADD COLUMN `segments` TEXT DEFAULT NULL AFTER `trim_end`');
         }
     }
 

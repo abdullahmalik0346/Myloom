@@ -51,7 +51,10 @@
     var video = options.video;
     var annotations = options.annotations || video.annotations || [];
     var native = sourceFormat(video);
-    var hasTrim = Number(video.trim_start) > 0 ||
+    var segments = Array.isArray(video.segments) ? video.segments : null;
+    var hasTrim = video.is_cut === true ||
+      (segments && segments.length > 1) ||
+      Number(video.trim_start) > 0 ||
       (video.trim_end && Number(video.trim_end) > 0 && Number(video.trim_end) < Number(video.duration));
     var hasOverlays = annotations.length > 0;
 
@@ -110,7 +113,11 @@
         var reasons = [];
         if (format !== native) { reasons.push('converting ' + native.toUpperCase() + ' → ' + format.toUpperCase()); }
         if (burn) { reasons.push('baking in overlays'); }
-        if (hasTrim) { reasons.push('applying the trim'); }
+        if (hasTrim) {
+          reasons.push(segments && segments.length > 1
+            ? 'applying ' + (segments.length - 1) + ' cut(s)'
+            : 'applying the trim');
+        }
         if (quality !== 'source') { reasons.push('resizing to ' + quality + 'p'); }
         lines.push('Re-encodes in your browser (' + reasons.join(', ') + ').');
         lines.push('This runs in real time — roughly ' + ML.duration(effectiveDuration()) +
@@ -124,6 +131,12 @@
     }
 
     function effectiveDuration() {
+      if (typeof video.play_duration === 'number' && video.play_duration > 0) {
+        return video.play_duration;
+      }
+      if (segments && segments.length) {
+        return segments.reduce(function (sum, s) { return sum + Math.max(0, s.end - s.start); }, 0);
+      }
       var start = Number(video.trim_start) || 0;
       var end = video.trim_end && Number(video.trim_end) > 0 ? Number(video.trim_end) : Number(video.duration) || 0;
       return Math.max(0, end - start);
@@ -172,6 +185,7 @@
         format: format,
         quality: quality,
         annotations: burn ? annotations : [],
+        segments: segments,
         trimStart: Number(video.trim_start) || 0,
         trimEnd: video.trim_end && Number(video.trim_end) > 0 ? Number(video.trim_end) : null,
         isCancelled: function () { return cancelled; },
@@ -237,9 +251,11 @@
       var audioContext = null;
       var rafId = null;
       var finished = false;
-      var trimStart = options.trimStart || 0;
-      var trimEnd = null;
+      var segments = [];
+      var segmentIndex = 0;
+      var elapsedBefore = 0;   // playing time already encoded, for progress
       var total = 0;
+      var switching = false;
 
       var fail = function (error) {
         cleanup();
@@ -271,8 +287,26 @@
         canvas.height = Math.max(2, Math.round((vh * scale) / 2) * 2);
 
         var duration = isFinite(source.duration) && source.duration > 0 ? source.duration : 0;
-        trimEnd = options.trimEnd || duration || 0;
-        total = Math.max(0.1, (trimEnd || duration) - trimStart);
+
+        // Build the list of pieces to encode. An explicit segment list wins;
+        // otherwise fall back to the trim range, otherwise the whole file.
+        segments = [];
+        if (Array.isArray(options.segments) && options.segments.length) {
+          options.segments.forEach(function (seg) {
+            var start = Math.max(0, Number(seg.start) || 0);
+            var end = Number(seg.end) || 0;
+            if (duration > 0) { end = Math.min(end, duration); }
+            if (end - start > 0.05) { segments.push({ start: start, end: end }); }
+          });
+        }
+        if (!segments.length) {
+          var start = options.trimStart || 0;
+          var end = options.trimEnd || duration || 0;
+          segments.push({ start: start, end: end > start ? end : (duration || start + 1) });
+        }
+        total = 0;
+        segments.forEach(function (seg) { total += seg.end - seg.start; });
+        total = Math.max(0.1, total);
 
         var mimeType = firstSupported(options.format === 'mp4' ? MP4_TYPES : WEBM_TYPES);
         if (!mimeType) {
@@ -330,14 +364,20 @@
           });
         };
 
-        // Seek to the trim point before recording anything.
-        if (trimStart > 0.05) {
-          source.onseeked = function () { source.onseeked = null; begin(); };
-          source.currentTime = trimStart;
-        } else {
-          begin();
-        }
+        // Position at the first piece before recording anything.
+        seekTo(segments[0].start, begin);
       };
+
+      /** Seek and wait for it to land before continuing. */
+      function seekTo(time, done) {
+        var onSeeked = function () {
+          source.removeEventListener('seeked', onSeeked);
+          done();
+        };
+        if (Math.abs(source.currentTime - time) < 0.02) { done(); return; }
+        source.addEventListener('seeked', onSeeked);
+        source.currentTime = time;
+      }
 
       function loop() {
         if (finished) { return; }
@@ -347,23 +387,49 @@
           return;
         }
         rafId = requestAnimationFrame(loop);
+        if (switching) { return; }
 
+        var segment = segments[segmentIndex];
         var t = source.currentTime;
         drawFrame(ctx, canvas, source, options.annotations, t);
+
         if (options.onProgress) {
-          options.onProgress(Math.max(0, Math.min(total, t - trimStart)), total);
+          var done = elapsedBefore + Math.max(0, Math.min(segment.end - segment.start, t - segment.start));
+          options.onProgress(Math.min(total, done), total);
         }
 
-        var atEnd = (trimEnd && t >= trimEnd - 0.03) || source.ended;
-        if (atEnd) {
-          finished = true;
-          cancelAnimationFrame(rafId);
-          rafId = null;
-          // Let the last frames flush before closing the file.
-          setTimeout(function () {
-            try { recorder.stop(); } catch (e) { fail(e); }
-          }, 260);
+        var pieceDone = t >= segment.end - 0.015 || source.ended;
+        if (!pieceDone) { return; }
+
+        if (segmentIndex < segments.length - 1) {
+          // Cross a cut: stop feeding the encoder, jump, then resume. Pausing
+          // the recorder is what keeps the removed material out of the output
+          // instead of encoding a frozen frame while the seek happens.
+          switching = true;
+          elapsedBefore += segment.end - segment.start;
+          segmentIndex++;
+          try { if (recorder.state === 'recording') { recorder.pause(); } } catch (e) { /* ignore */ }
+          source.pause();
+          seekTo(segments[segmentIndex].start, function () {
+            drawFrame(ctx, canvas, source, options.annotations, source.currentTime);
+            try { if (recorder.state === 'paused') { recorder.resume(); } } catch (e) { /* ignore */ }
+            source.play().then(function () { switching = false; }).catch(function (error) {
+              fail(new Error('Playback stalled between segments: ' + error.message));
+            });
+          });
+          return;
         }
+
+        finished = true;
+        cancelAnimationFrame(rafId);
+        rafId = null;
+        // Stop feeding the canvas before flushing, so the tail is not padded
+        // with a frozen frame while the encoder finishes.
+        try { source.pause(); } catch (e) { /* ignore */ }
+        try { recorder.requestData(); } catch (e) { /* ignore */ }
+        setTimeout(function () {
+          try { recorder.stop(); } catch (e) { fail(e); }
+        }, 120);
       }
     });
   }
@@ -582,8 +648,15 @@
     var dialog = ML.modal({
       title: 'Apply overlays permanently',
       body: [
-        el('p.small', {}, 'Bakes the ' + annotations.length + ' overlay(s) and the trim into the video ' +
-          'itself, then replaces the stored file.'),
+        el('p.small', {}, (function () {
+          var parts = [];
+          if (annotations.length) { parts.push(annotations.length + ' overlay(s)'); }
+          var segs = Array.isArray(video.segments) ? video.segments : [];
+          if (segs.length > 1) { parts.push(segs.length - 1 + ' cut(s)'); }
+          else if (video.is_cut) { parts.push('the trim'); }
+          return 'Bakes ' + (parts.length ? parts.join(' and ') : 'the current edit') +
+            ' into the video itself, then replaces the stored file.';
+        })()),
         el('div.card.pad', { style: { borderColor: 'var(--warn)', marginBottom: '14px' } }, [
           el('p.small', {}, [
             el('strong', {}, 'Use this for blurring anything sensitive. '),
@@ -616,6 +689,7 @@
         format: format,
         quality: 'source',
         annotations: annotations,
+        segments: Array.isArray(video.segments) ? video.segments : null,
         trimStart: Number(video.trim_start) || 0,
         trimEnd: video.trim_end && Number(video.trim_end) > 0 ? Number(video.trim_end) : null,
         isCancelled: function () { return cancelled; },
@@ -640,8 +714,8 @@
           return ML.post('upload/replace-finish', {
             key: uploadKey,
             mime: format === 'mp4' ? 'video/mp4' : 'video/webm',
-            duration: video.trim_end && Number(video.trim_end) > 0
-              ? Number(video.trim_end) - (Number(video.trim_start) || 0)
+            duration: typeof video.play_duration === 'number' && video.play_duration > 0
+              ? video.play_duration
               : Number(video.duration) || 0,
             clear_annotations: true
           });

@@ -13,8 +13,69 @@
   function Player(container, options) {
     options = options || {};
 
+    // Playback is defined by an ordered list of source ranges ("segments").
+    // One segment is the old trim; several let the middle be cut out or pieces
+    // reordered. Everything the controls show is in *virtual* time — the
+    // timeline the viewer sees — which maps onto source time through the list.
+    var segments = normaliseSegments(options.segments);
     var trimStart = Number(options.trimStart) || 0;
     var trimEnd = options.trimEnd ? Number(options.trimEnd) : null;
+    var activeIndex = 0;
+
+    function normaliseSegments(list) {
+      if (!Array.isArray(list) || !list.length) { return null; }
+      var out = [];
+      list.forEach(function (item) {
+        var start = Math.max(0, Number(item.start) || 0);
+        var end = Number(item.end) || 0;
+        if (end - start > 0.05) { out.push({ start: start, end: end }); }
+      });
+      return out.length ? out : null;
+    }
+
+    /** The effective list, falling back to the trim range or the whole file. */
+    function segmentList() {
+      if (segments) { return segments; }
+      var natural = naturalDuration();
+      var end = trimEnd && trimEnd > trimStart ? Math.min(trimEnd, natural || trimEnd) : natural;
+      if (!(end > trimStart)) { return [{ start: 0, end: natural || 0 }]; }
+      return [{ start: trimStart, end: end }];
+    }
+
+    /** Virtual position (what the scrub bar shows) for a source time. */
+    function toVirtual(sourceTime) {
+      var list = segmentList();
+      var acc = 0;
+      for (var i = 0; i < list.length; i++) {
+        var seg = list[i];
+        if (sourceTime < seg.start) { return acc; }
+        if (sourceTime <= seg.end) { return acc + (sourceTime - seg.start); }
+        acc += seg.end - seg.start;
+      }
+      return acc;
+    }
+
+    /** Source time for a virtual position, plus which segment it lands in. */
+    function toSource(virtualTime) {
+      var list = segmentList();
+      var remaining = Math.max(0, virtualTime);
+      for (var i = 0; i < list.length; i++) {
+        var span = list[i].end - list[i].start;
+        if (remaining <= span || i === list.length - 1) {
+          return { time: list[i].start + Math.min(remaining, span), index: i };
+        }
+        remaining -= span;
+      }
+      return { time: list[0].start, index: 0 };
+    }
+
+    function segmentIndexAt(sourceTime) {
+      var list = segmentList();
+      for (var i = 0; i < list.length; i++) {
+        if (sourceTime >= list[i].start - 0.05 && sourceTime <= list[i].end + 0.05) { return i; }
+      }
+      return -1;
+    }
     var captions = [];      // [{start, end, text}]
     var chapters = options.chapters || [];
     var markers = [];       // [{time, emoji|label}]
@@ -87,19 +148,26 @@
       return natural;
     }
 
-    function effectiveEnd() {
-      var natural = naturalDuration();
-      if (trimEnd && trimEnd > trimStart) { return Math.min(trimEnd, natural || trimEnd); }
-      return natural;
+    function firstStart() { return segmentList()[0].start; }
+
+    function effectiveDuration() {
+      var list = segmentList();
+      var total = 0;
+      for (var i = 0; i < list.length; i++) { total += Math.max(0, list[i].end - list[i].start); }
+      return total;
     }
-    function effectiveDuration() { return Math.max(0, effectiveEnd() - trimStart); }
-    function relTime() { return Math.max(0, Math.min(effectiveDuration(), video.currentTime - trimStart)); }
+
+    function relTime() {
+      return Math.max(0, Math.min(effectiveDuration(), toVirtual(video.currentTime)));
+    }
 
     function togglePlay() { video.paused ? play() : video.pause(); }
 
     function play() {
-      if (video.currentTime < trimStart - 0.15 || video.currentTime >= effectiveEnd() - 0.05) {
-        video.currentTime = trimStart;
+      // Restart from the top when parked outside every kept segment, or at the end.
+      if (segmentIndexAt(video.currentTime) === -1 || relTime() >= effectiveDuration() - 0.05) {
+        video.currentTime = firstStart();
+        activeIndex = 0;
       }
       var promise = video.play();
       if (promise && promise.catch) {
@@ -112,8 +180,9 @@
     }
 
     function seek(relSeconds) {
-      var target = trimStart + Math.max(0, Math.min(effectiveDuration(), relSeconds));
-      video.currentTime = target;
+      var mapped = toSource(Math.max(0, Math.min(effectiveDuration(), relSeconds)));
+      activeIndex = mapped.index;
+      video.currentTime = mapped.time;
       render();
     }
 
@@ -132,11 +201,11 @@
       timeLabel.textContent = ML.duration(current) + ' / ' + ML.duration(total);
 
       if (video.buffered && video.buffered.length && total > 0) {
-        var bufferedEnd = video.buffered.end(video.buffered.length - 1) - trimStart;
+        var bufferedEnd = toVirtual(video.buffered.end(video.buffered.length - 1));
         buffer.style.width = Math.min(100, Math.max(0, (bufferedEnd / total) * 100)) + '%';
       }
-      renderCaption(current + trimStart);
-      renderChapter(current + trimStart);
+      renderCaption(video.currentTime);
+      renderChapter(video.currentTime);
     }
 
     function renderCaption(absolute) {
@@ -171,14 +240,16 @@
       var total = effectiveDuration();
       if (total <= 0) { return; }
       chapters.forEach(function (chapter) {
-        var at = (Number(chapter.start_time) - trimStart) / total;
+        if (segmentIndexAt(Number(chapter.start_time)) === -1) { return; }
+        var at = toVirtual(Number(chapter.start_time)) / total;
         if (at < 0 || at > 1) { return; }
         markerLayer.appendChild(el('i.scrub-marker.chapter', {
           style: { left: (at * 100) + '%' }, title: chapter.title
         }));
       });
       markers.forEach(function (marker) {
-        var at = (Number(marker.time) - trimStart) / total;
+        if (segmentIndexAt(Number(marker.time)) === -1) { return; }
+        var at = toVirtual(Number(marker.time)) / total;
         if (at < 0 || at > 1) { return; }
         markerLayer.appendChild(el('i.scrub-marker', {
           style: { left: (at * 100) + '%' }, title: marker.label || ''
@@ -288,7 +359,7 @@
       durationFixed = true;
       var restore = function () {
         video.removeEventListener('timeupdate', restore);
-        video.currentTime = trimStart;
+        video.currentTime = firstStart();
         renderMarkers();
         render();
       };
@@ -304,13 +375,39 @@
     });
     video.addEventListener('durationchange', function () { renderMarkers(); render(); });
     video.addEventListener('timeupdate', function () {
-      if (trimEnd && video.currentTime >= effectiveEnd()) {
-        video.pause();
-        video.currentTime = effectiveEnd();
-      }
+      advanceSegment();
       render();
       if (options.onProgress) { options.onProgress(relTime(), effectiveDuration()); }
     });
+
+    /**
+     * Jump across a cut. When playback runs past the end of the current
+     * segment it continues at the start of the next one, so removed material
+     * is never seen. After the last segment, playback stops.
+     */
+    function advanceSegment() {
+      var list = segmentList();
+      if (activeIndex >= list.length) { activeIndex = list.length - 1; }
+      var current = list[activeIndex];
+      if (!current) { return; }
+
+      // A seek may have landed in a different segment; follow it.
+      if (video.currentTime < current.start - 0.3 || video.currentTime > current.end + 0.3) {
+        var found = segmentIndexAt(video.currentTime);
+        if (found !== -1) { activeIndex = found; return; }
+      }
+
+      if (video.currentTime < current.end - 0.04) { return; }
+
+      if (activeIndex < list.length - 1) {
+        activeIndex++;
+        video.currentTime = list[activeIndex].start;
+      } else {
+        video.pause();
+        video.currentTime = current.end;
+        if (options.onEnded) { options.onEnded(); }
+      }
+    }
     video.addEventListener('progress', render);
     video.addEventListener('play', function () {
       root.classList.add('playing');
@@ -411,9 +508,20 @@
       setTrim: function (start, end) {
         trimStart = Number(start) || 0;
         trimEnd = end ? Number(end) : null;
+        segments = null;
+        activeIndex = 0;
         renderMarkers();
         render();
       },
+      setSegments: function (list) {
+        segments = normaliseSegments(list);
+        activeIndex = 0;
+        renderMarkers();
+        render();
+      },
+      segments: function () { return segmentList().slice(); },
+      toVirtual: toVirtual,
+      toSource: function (v) { return toSource(v).time; },
       setCaptions: function (list) {
         captions = (list || []).map(function (item) {
           return { start: Number(item.start), end: Number(item.end), text: String(item.text) };

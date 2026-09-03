@@ -324,6 +324,7 @@ final class UploadController
             'size_bytes' => $size,
             'trim_start' => 0,
             'trim_end'   => null,
+            'segments'   => null,
             'status'     => 'ready',
             'updated_at' => Util::now(),
         ];

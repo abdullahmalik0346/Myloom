@@ -62,7 +62,11 @@
             el('div.row.wrap.small.muted', {}, [
               el('span', { text: ML.dateTimeLabel(video.created_at) }),
               el('span', {}, '·'),
-              el('span', { text: video.duration_human }),
+              el('span', {
+              text: video.is_cut && video.play_duration_human
+                ? video.play_duration_human + ' (cut from ' + video.duration_human + ')'
+                : video.duration_human
+            }),
               el('span', {}, '·'),
               el('span', { text: video.view_count + ' views' }),
               el('span', {}, '·'),
@@ -142,7 +146,19 @@
                     }
                   }, '🔒 Apply overlays & trim permanently')
                 : null,
-              el('button.btn.block', { type: 'button', onclick: function () { trimDialog(video, player, refresh); } }, '✂️ Trim'),
+              el('button.btn.block', {
+                type: 'button',
+                onclick: function () {
+                  ML.CutEditor.open({ video: video, onSaved: function () { refresh(); } });
+                }
+              }, [
+                '✂️ Cut, trim & stitch',
+                video.is_cut
+                  ? el('span.badge.accent', { style: { marginLeft: '6px' } },
+                      video.segments && video.segments.length > 1
+                        ? video.segments.length + ' pieces' : 'trimmed')
+                  : null
+              ]),
               el('button.btn.block', { type: 'button', onclick: function () { chaptersDialog(video, player, refresh); } }, '📑 Chapters')
             ])
           ]),
@@ -168,6 +184,7 @@
         fallbackDuration: video.duration,
         trimStart: video.trim_start,
         trimEnd: video.trim_end,
+        segments: video.segments,
         chapters: video.chapters || []
       });
       ML.Overlays.attach(player, video.annotations || []);

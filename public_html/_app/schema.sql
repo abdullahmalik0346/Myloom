@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS `videos` (
   `require_email`   TINYINT(1) NOT NULL DEFAULT 0,
   `trim_start`    DECIMAL(10,2) NOT NULL DEFAULT 0,
   `trim_end`      DECIMAL(10,2) DEFAULT NULL,
+  `segments`      TEXT DEFAULT NULL,
   `cta_label`     VARCHAR(80) DEFAULT NULL,
   `cta_url`       VARCHAR(500) DEFAULT NULL,
   `is_starred`    TINYINT(1) NOT NULL DEFAULT 0,

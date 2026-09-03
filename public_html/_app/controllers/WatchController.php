@@ -78,6 +78,8 @@ final class WatchController
             'download_url'    => $allowDownload ? Util::url($mediaQuery . '&dl=1') : null,
             'trim_start'      => (float)$video['trim_start'],
             'trim_end'        => $video['trim_end'] !== null ? (float)$video['trim_end'] : null,
+            'segments'        => Segments::forVideo($video),
+            'play_duration'   => Segments::duration(Segments::forVideo($video)),
             'allow_comments'  => (int)$video['allow_comments'] === 1,
             'allow_reactions' => (int)$video['allow_reactions'] === 1,
             'allow_download'  => $allowDownload,

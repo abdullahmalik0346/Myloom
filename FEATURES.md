@@ -86,10 +86,12 @@ not do at all. Loom's paid tiers (Business / Business + AI) are the reference.
 | Shapes: box, circle, arrow | ✅ | Colour and line thickness per shape |
 | Show an overlay only for part of the video | ✅ | Every overlay has its own range, e.g. 1:11 → 2:30. Type the timecode, drag the bar on the timeline, or snap either end to the playhead |
 | Burn edits into the file | ✅ | Re-encodes in your browser; also available as "apply permanently" |
-| Stitch several videos together | ❌ | Not implemented |
-| Cut a section from the middle | ❌ | Not implemented |
+| Cut a section from the middle | ✅ | Split anywhere, delete the pieces you do not want — playback skips straight over them |
+| Reorder pieces of a recording | ✅ | Move pieces up and down; they play in the order you set |
+| Remove silences automatically | ✅ | Analyses the audio in your browser and drops quiet stretches over 0.7s |
+| Stitch several separate videos together | ❌ | Cutting and reordering works within one recording, not across several |
 
-**How editing works here.** Trim and overlays are stored as metadata and drawn
+**How editing works here.** Cuts, trim and overlays are stored as metadata and drawn
 by the player, so edits are instant and reversible, and nothing is re-encoded
 on your server (shared hosting has no `ffmpeg`, and running it would block a PHP
 request for minutes). When you need them to be part of the file itself — to

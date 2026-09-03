@@ -236,6 +236,7 @@
       fallbackDuration: video.duration,
       trimStart: video.trim_start,
       trimEnd: video.trim_end,
+      segments: video.segments,
       chapters: video.chapters,
       autoplay: options.autoplay,
       keyboardScope: 'document',

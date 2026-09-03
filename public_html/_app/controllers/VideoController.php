@@ -5,6 +5,9 @@ final class VideoController
     /** Shared serialiser for library/grid payloads. */
     public static function shape(array $v, bool $withOwner = true): array
     {
+        $segments = Segments::forVideo($v);
+        $playDuration = $segments ? Segments::duration($segments) : (float)$v['duration'];
+
         $out = [
             'uid'            => $v['uid'],
             'title'          => $v['title'],
@@ -34,6 +37,10 @@ final class VideoController
             'require_email'  => (int)$v['require_email'] === 1,
             'trim_start'     => (float)$v['trim_start'],
             'trim_end'       => $v['trim_end'] !== null ? (float)$v['trim_end'] : null,
+            'segments'       => $segments,
+            'play_duration'  => $playDuration,
+            'play_duration_human' => Util::duration($playDuration),
+            'is_cut'         => !Segments::isWhole($segments, (float)$v['duration']),
             'cta_label'      => $v['cta_label'],
             'cta_url'        => $v['cta_url'],
             'summary'        => $v['summary'] ?? null,
@@ -279,10 +286,23 @@ final class VideoController
         }
         if (Http::input('trim_start') !== null) {
             $data['trim_start'] = max(0, Http::float('trim_start'));
+            $data['segments'] = null;
         }
         if (Http::input('trim_end') !== null) {
             $end = Http::float('trim_end');
             $data['trim_end'] = $end > 0 ? $end : null;
+            $data['segments'] = null;
+        }
+        if (Http::input('segments') !== null) {
+            $segments = Segments::normalise(Http::input('segments', []), (float)$video['duration']);
+            if (!$segments) {
+                Http::fail('A video needs at least one segment to play.');
+            }
+            $data['segments'] = Segments::encode($segments);
+            // Mirror the overall span into the legacy fields.
+            $data['trim_start'] = $segments[0]['start'];
+            $last = $segments[count($segments) - 1];
+            $data['trim_end'] = count($segments) === 1 ? $last['end'] : null;
         }
         if (Http::input('cta_label') !== null) {
             $data['cta_label'] = mb_substr(Http::str('cta_label'), 0, 80) ?: null;
