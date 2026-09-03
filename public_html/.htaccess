@@ -8,13 +8,14 @@ DirectoryIndex index.php
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
+  # Application code and storage are never served directly. This must come
+  # before the "real file" rule below, or Apache would happily serve them.
+  RewriteRule ^(_app|_storage)(/|$) - [F,L]
+
   # Never rewrite real files or folders (assets, install.php, api.php, file.php).
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
-
-  # Application code and storage are never served directly.
-  RewriteRule ^(_app|_storage)/ - [F,L]
 
   # Pretty API routes: /api/videos/get -> api.php?r=videos/get
   RewriteRule ^api/(.*)$ api.php?r=$1 [QSA,L]
