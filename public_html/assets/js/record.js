@@ -23,7 +23,9 @@
     var progressBar = el('div.upload-progress', { style: { display: 'none' } }, el('i', { style: { width: '0%' } }));
 
     var settings = ML.storage('recordSettings') || {};
-    var mode = settings.mode || 'screen_camera';
+    // 'screen_camera' was one mode before the camera became its own switch.
+    var mode = settings.mode === 'screen_camera' ? 'screen' : (settings.mode || 'screen');
+    var camBubble = settings.mode === 'screen_camera' ? true : settings.camBubble !== false;
     var micEnabled = settings.mic !== false;
     var systemAudio = settings.systemAudio !== false;
     var transcript = settings.transcript !== false;
@@ -31,10 +33,11 @@
 
     /* --- Mode picker ------------------------------------------------------- */
 
+    // The same three modes the browser extension offers, so the two match.
     var modes = [
-      { key: 'screen_camera', icon: '🖥️＋🎥', title: 'Screen + camera', desc: 'Your screen with a camera bubble' },
-      { key: 'screen', icon: '🖥️', title: 'Screen only', desc: 'Just what is on your display' },
-      { key: 'camera', icon: '🎥', title: 'Camera only', desc: 'A talking-head video' }
+      { key: 'screen', icon: '🖥️', title: 'Screen', desc: 'A whole display or one window' },
+      { key: 'tab', icon: '🗔', title: 'Tab', desc: 'One browser tab, with its audio' },
+      { key: 'camera', icon: '🎥', title: 'Camera', desc: 'A talking-head video' }
     ];
     var modeGrid = el('div.mode-grid', {}, modes.map(function (item) {
       return el('div.mode' + (mode === item.key ? '.active' : ''), {
@@ -60,7 +63,7 @@
 
     function persist() {
       ML.storage('recordSettings', {
-        mode: mode, mic: micEnabled, systemAudio: systemAudio,
+        mode: mode, camBubble: camBubble, mic: micEnabled, systemAudio: systemAudio,
         transcript: transcript, countdown: countdownOn
       });
     }
@@ -74,6 +77,13 @@
 
     var optionsCard = el('div.card.pad', {}, [
       el('h3', {}, 'Capture options'),
+      toggle('Camera bubble', camBubble, 'Show your webcam in a corner of the screen recording',
+        function (value) {
+          camBubble = value;
+          persist();
+          syncRecorder();
+          if (recorder && recorder.state === 'preview') { setup(); }
+        }),
       toggle('Microphone', micEnabled, 'Record your voice', function (value) { micEnabled = value; persist(); syncRecorder(); }),
       toggle('System audio', systemAudio, 'Include sound from the shared tab or screen (Chrome/Edge)', function (value) { systemAudio = value; persist(); syncRecorder(); }),
       toggle('Capture transcript', transcript, caps.speech
@@ -85,6 +95,7 @@
     function syncRecorder() {
       if (!recorder) { return; }
       recorder.micEnabled = micEnabled;
+      recorder.setCamBubble(camBubble);
       recorder.systemAudio = systemAudio;
       recorder.captureTranscript = transcript && caps.speech;
     }
@@ -142,7 +153,7 @@
     }
 
     function overBubble(point) {
-      if (!recorder || recorder.mode !== 'screen_camera') { return false; }
+      if (!recorder || !recorder.wantsBubble()) { return false; }
       var bubble = recorder.getBubble();
       var canvas = recorder.previewCanvas;
       var w = (bubble.size * canvas.height) / canvas.width;

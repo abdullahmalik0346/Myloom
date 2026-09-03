@@ -73,7 +73,10 @@
     options = options || {};
 
     var self = {
-      mode: 'screen_camera',
+      // 'screen' | 'tab' | 'camera', with the camera bubble as its own switch
+      // so it can sit over either of the screen modes. Matches the extension.
+      mode: 'screen',
+      camBubble: true,
       state: 'idle',
       micEnabled: true,
       systemAudio: true,
@@ -131,9 +134,19 @@
       if (self.mode !== 'camera' && !caps.displayCapture) {
         throw new Error('Screen capture is not available in this browser. Chrome, Edge and Firefox on desktop support it.');
       }
-      if (self.mode !== 'screen' && !caps.userMedia) {
+      if (wantsCamera() && !caps.userMedia) {
         throw new Error('Camera access is not available in this browser.');
       }
+    }
+
+    /** The camera is needed for camera mode, and for a bubble over a screen. */
+    function wantsCamera() {
+      return self.mode === 'camera' || self.camBubble;
+    }
+
+    /** True when a camera bubble should be composited over the screen. */
+    function wantsBubble() {
+      return self.mode !== 'camera' && self.camBubble;
     }
 
     function setState(state) {
@@ -144,13 +157,17 @@
     /* --- Source acquisition ------------------------------------------------ */
 
     function getScreen() {
+      var video = {
+        frameRate: { ideal: options.fps || 30, max: 60 },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        cursor: 'always'
+      };
+      // Tab mode opens Chrome's picker on its tab list. It is a hint, not a
+      // rule — browsers that ignore it just show the usual picker.
+      if (self.mode === 'tab') { video.displaySurface = 'browser'; }
       return navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: { ideal: options.fps || 30, max: 60 },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          cursor: 'always'
-        },
+        video: video,
         audio: self.systemAudio ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : false
       });
     }
@@ -193,11 +210,16 @@
             return screenVideo.play();
           }));
         }
-        if (self.mode !== 'screen') {
+        if (wantsCamera()) {
           jobs.push(getCamera().then(function (stream) {
             camStream = stream;
             camVideo.srcObject = stream;
             return camVideo.play();
+          }).catch(function (error) {
+            // Only the camera-only mode truly needs it; a bubble is optional.
+            if (self.mode === 'camera') { throw error; }
+            self.camBubble = false;
+            ML.toast('Camera unavailable — recording the screen without a bubble.', 'error');
           }));
         }
         if (self.micEnabled) {
@@ -262,7 +284,7 @@
         ctx.drawImage(base, (w - dw) / 2, (h - dh) / 2, dw, dh);
       }
 
-      if (self.mode === 'screen_camera' && camVideo.videoWidth) {
+      if (wantsBubble() && camVideo.videoWidth) {
         drawBubble(w, h);
       }
       ctx.drawImage(drawCanvas, 0, 0);
@@ -376,7 +398,8 @@
           var mimeType = recorder.mimeType || pickMimeType(options.container) || 'video/webm';
 
           return ML.post('videos/create', {
-            source: self.mode,
+            // The stored column predates tab mode; a tab is a screen surface.
+            source: self.mode === 'camera' ? 'camera' : (wantsBubble() ? 'screen_camera' : 'screen'),
             mime: mimeType.split(';')[0] || 'video/webm',
             title: meta.title || 'Untitled recording',
             space_id: meta.spaceId || 0,
@@ -658,6 +681,8 @@
     };
 
     self.setMode = function (mode) { self.mode = mode; };
+    self.setCamBubble = function (on) { self.camBubble = !!on; };
+    self.wantsBubble = wantsBubble;
     self.isRecording = function () { return self.state === 'recording' || self.state === 'paused'; };
     self.uploadStats = function () { return { sent: upload.sent, pending: upload.queue.length }; };
 

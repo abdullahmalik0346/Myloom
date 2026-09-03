@@ -14,8 +14,9 @@ length is limited by disk space rather than browser memory. Share a link with a
 password, an expiry date or a view cap, then watch the analytics: who opened it,
 how far they got, where they dropped off, and what they said in the comments.
 
-- **Record** — screen / camera / screen + camera, mic and system audio, pause and
-  resume, 3-2-1 countdown, live annotation, unlimited length
+- **Record** — screen / tab / camera with an optional camera bubble, mic and
+  system audio, pause and resume, 3-2-1 countdown, live annotation,
+  unlimited length
 - **Share** — link, workspace-only, public or private; per-recipient tracked
   links with their own password, expiry and view limit; embed anywhere
 - **Analyse** — views, unique viewers, watch time, completion rate, a

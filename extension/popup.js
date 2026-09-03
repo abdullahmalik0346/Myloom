@@ -5,7 +5,7 @@ const app = document.getElementById('app');
 
 const MODES = [
   { key: 'screen', icon: '🖥️', label: 'Screen', hint: 'A whole display or one window' },
-  { key: 'tab', icon: '🗔', label: 'This tab', hint: 'Just this tab, with its audio' },
+  { key: 'tab', icon: '🗔', label: 'Tab', hint: 'The tab you are on, with its audio' },
   { key: 'camera', icon: '🎥', label: 'Camera', hint: 'A talking-head video' }
 ];
 

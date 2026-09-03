@@ -60,44 +60,70 @@ function cancelled() {
  * getDisplayMedia stays as a fallback for builds without desktopCapture.
  */
 async function getScreen(options) {
+  // getDisplayMedia works from an offscreen document and does NOT need a user
+  // gesture here — measured, not assumed. Its picker also lists tabs, so
+  // choosing a tab from it works, unlike the desktopCapture picker below.
+  try {
+    return await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: options.systemAudio !== false
+    });
+  } catch (error) {
+    // Closing the picker is a choice, not a fault.
+    if (error && (error.name === 'NotAllowedError' || /permission denied/i.test(error.message || ''))) {
+      throw cancelled();
+    }
+    return pickerFallback(options, error);
+  }
+}
+
+/**
+ * Last resort for a Chrome build that refuses getDisplayMedia here.
+ *
+ * Chrome binds a desktopCapture stream id to the frame the picker was opened
+ * for, and an offscreen document is not that frame — opening the id then fails
+ * with "Invalid state", or "Error starting tab capture" when a tab was chosen.
+ * So this is a fallback only, and it says what went wrong either way.
+ */
+async function pickerFallback(options, firstError) {
   const picked = await chrome.runtime
     .sendMessage({ type: 'pickDesktopSource' })
     .catch(() => null);
 
   if (picked && picked.cancelled) { throw cancelled(); }
-
-  if (picked && picked.streamId) {
-    const video = {
-      mandatory: {
-        chromeMediaSource: 'desktop',
-        chromeMediaSourceId: picked.streamId,
-        maxWidth: 1920,
-        maxHeight: 1080,
-        maxFrameRate: 30
-      }
-    };
-    // Only ask for the audio track when the picker said it is available:
-    // requesting it otherwise fails the whole getUserMedia call.
-    const wantAudio = options.systemAudio !== false && picked.canAudio === true;
-    try {
-      return await navigator.mediaDevices.getUserMedia({
-        video,
-        audio: wantAudio
-          ? { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: picked.streamId } }
-          : false
-      });
-    } catch (error) {
-      if (!wantAudio) { throw error; }
-      // Some sources advertise audio then refuse it; keep the video.
-      return navigator.mediaDevices.getUserMedia({ video, audio: false });
-    }
+  if (!picked || !picked.streamId) {
+    throw new Error('Screen capture was refused: ' + (firstError && firstError.message
+      ? firstError.message
+      : 'no source was chosen') + '.');
   }
 
-  // No stream id: fall back to the standard API and let it report why.
-  return navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-    audio: options.systemAudio !== false
-  });
+  const video = {
+    mandatory: {
+      chromeMediaSource: 'desktop',
+      chromeMediaSourceId: picked.streamId,
+      maxWidth: 1920,
+      maxHeight: 1080,
+      maxFrameRate: 30
+    }
+  };
+  // Only ask for the audio track when the picker said it is available:
+  // requesting it otherwise fails the whole getUserMedia call.
+  const wantAudio = options.systemAudio !== false && picked.canAudio === true;
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video,
+      audio: wantAudio
+        ? { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: picked.streamId } }
+        : false
+    });
+  } catch (error) {
+    if (wantAudio) {
+      // Some sources advertise audio then refuse it; keep the video.
+      try { return await navigator.mediaDevices.getUserMedia({ video, audio: false }); } catch (ignored) { /* fall through */ }
+    }
+    throw new Error('Chrome would not share that source (' + error.message + '). '
+      + 'Try "Tab" mode if you want to record a single tab.');
+  }
 }
 
 /**

@@ -29,8 +29,8 @@ Settings page and the extension stops working immediately.
 ## Using it
 
 - Click the toolbar icon on any page, pick a mode, and press **Start recording**.
-  - **Screen** — a whole display or a single window, chosen in Chrome's picker.
-  - **This tab** — only the tab you opened the popup over, including its audio.
+  - **Screen** — a display, a window or any tab, chosen in Chrome's picker.
+  - **Tab** — the tab you opened the popup over, with its audio and no picker.
   - **Camera** — a talking-head video with no screen.
   - **Camera bubble** overlays your webcam in the corner, and works with either
     of the screen modes.
@@ -54,8 +54,9 @@ The usual causes:
 
 | What you see | Why | Fix |
 |---|---|---|
-| *Error starting tab capture* | A tab was chosen in the screen picker | Use the **This tab** mode, or pick a screen/window |
+| *Error starting tab capture* | An old build fell back to the desktop picker | Reload the extension at `chrome://extensions` |
 | *…has not been invoked…* | Chrome has not granted tab capture yet | Click the toolbar icon on that tab and start from the popup |
+| *Invalid state* | The desktopCapture fallback ran | Nothing to do — retry; the normal path is `getDisplayMedia` |
 | Picker opens then closes, nothing saved | Sharing was cancelled or denied | Choose a source and click **Share** |
 | *Not connected* | No site address or token saved | Options → paste the address and an `mlt_…` token, then **Save & test connection** |
 | Recording runs but the library stays empty | The server rejected the upload | Diagnostics will show the API error; check the token has not been revoked |
@@ -64,17 +65,18 @@ The usual causes:
 
 - **HTTPS.** If your MyLoom runs on plain `http://`, recording still works from
   the extension but the site itself cannot record. Use HTTPS either way.
-- **Screen capture uses Chrome's own source picker** (`chrome.desktopCapture`)
-  rather than `getDisplayMedia()`. An offscreen document has no user gesture, and
-  `getDisplayMedia()` requires one — it shows a picker that closes itself
-  immediately. `getDisplayMedia()` remains as a fallback.
-- **The screen picker only offers screens and windows, never tabs.** To record a
-  tab, use the **This tab** mode instead: tabs come from `chrome.tabCapture`,
-  which is a different kind of stream and cannot be opened from a desktop
-  picker id.
-- **"This tab" needs the extension invoked on that tab.** Chrome grants tab
+- **Screen capture uses `getDisplayMedia()`** from the offscreen document, which
+  needs no user gesture there — measured, not assumed. `chrome.desktopCapture`
+  is only a fallback, because Chrome ties the id its picker returns to the frame
+  the picker was opened for, and an offscreen document is not that frame:
+  opening one fails with *Invalid state*, or *Error starting tab capture* when a
+  tab was chosen.
+- **Tab mode needs the extension invoked on that tab.** Chrome grants tab
   capture only after you click the toolbar icon on the tab in question, so start
   it from the popup — the keyboard shortcut alone is not enough the first time.
+- **The two screen modes overlap on purpose.** Chrome's picker lists tabs too,
+  so **Screen** can record a tab; **Tab** skips the picker and always takes the
+  tab you are on.
 - **The control bar needs a normal web page.** On `chrome://` pages, the Web
   Store, or a blank new tab there is nothing to inject into — the toolbar badge
   still shows the timer, and the popup still has Stop.
