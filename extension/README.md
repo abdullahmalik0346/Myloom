@@ -44,6 +44,10 @@ server.
 
 - **HTTPS.** If your MyLoom runs on plain `http://`, recording still works from
   the extension but the site itself cannot record. Use HTTPS either way.
+- **Screen capture uses Chrome's own source picker** (`chrome.desktopCapture`)
+  rather than `getDisplayMedia()`. An offscreen document has no user gesture, and
+  `getDisplayMedia()` requires one — it shows a picker that closes itself
+  immediately. `getDisplayMedia()` remains as a fallback.
 - **The control bar needs a normal web page.** On `chrome://` pages, the Web
   Store, or a blank new tab there is nothing to inject into — the toolbar badge
   still shows the timer, and the popup still has Stop.

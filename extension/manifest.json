@@ -10,7 +10,8 @@
     "tabs",
     "scripting",
     "activeTab",
-    "desktopCapture"
+    "desktopCapture",
+    "notifications"
   ],
   "host_permissions": [
     "http://*/*",

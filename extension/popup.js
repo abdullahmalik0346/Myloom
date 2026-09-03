@@ -31,11 +31,46 @@ function header() {
   return el('div.head', {}, [el('div.mark'), el('span.title', { text: 'MyLoom' })]);
 }
 
+/** The last capture failure, if there is one worth showing. */
+function errorPanel(stored) {
+  if (!stored || !stored.message) { return null; }
+  const age = Date.now() - (stored.at || 0);
+  if (age > 30 * 60 * 1000) { return null; }   // stale, not worth alarming anyone
+
+  return el('div.errbox', {}, [
+    el('div.errtitle', { text: 'Last attempt failed' }),
+    el('div.errmsg', { text: stored.message }),
+    el('div.errtools', {}, [
+      el('button.link', {
+        onclick: async () => {
+          await navigator.clipboard.writeText(stored.message).catch(() => {});
+          ML_toast('Copied');
+        }
+      }, 'Copy'),
+      el('button.link', {
+        onclick: async () => {
+          await chrome.runtime.sendMessage({ type: 'clearError' });
+          render();
+        }
+      }, 'Dismiss')
+    ])
+  ]);
+}
+
+function ML_toast(text) {
+  const note = el('div.toast', { text });
+  document.body.appendChild(note);
+  setTimeout(() => note.remove(), 1400);
+}
+
 async function render() {
   const settings = await loadSettings();
+  const stored = await chrome.storage.local.get('lastError');
   const state = await chrome.runtime.sendMessage({ type: 'getState' }).catch(() => ({ status: 'idle' }));
   app.replaceChildren();
   app.appendChild(header());
+  const panel = errorPanel(stored.lastError);
+  if (panel) { app.appendChild(panel); }
 
   if (!settings.siteUrl || !settings.token) {
     app.appendChild(el('div.pad', {}, [

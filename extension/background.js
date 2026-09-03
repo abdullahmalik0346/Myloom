@@ -119,8 +119,34 @@ async function removeBar() {
 
 /* --- Recording lifecycle --------------------------------------------------- */
 
+/**
+ * Remember the last failure and tell the user about it.
+ * A capture error almost always arrives after the popup has closed, so without
+ * this the whole thing looks like nothing happened at all.
+ */
+async function reportFailure(message) {
+  await chrome.storage.local.set({ lastError: { message: String(message), at: Date.now() } });
+  if (chrome.notifications && chrome.notifications.create) {
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon-128.png',
+      title: 'MyLoom — recording did not start',
+      message: String(message).slice(0, 240),
+      priority: 2
+    });
+  }
+  chrome.action.setBadgeText({ text: '!' });
+  chrome.action.setBadgeBackgroundColor({ color: '#e5484d' });
+}
+
+async function clearLastError() {
+  await chrome.storage.local.remove('lastError');
+  chrome.action.setBadgeText({ text: '' });
+}
+
 async function startRecording(options) {
   if (state.status !== 'idle') { throw new Error('A recording is already running.'); }
+  await clearLastError();
 
   // Offscreen documents only get chrome.runtime — not chrome.storage — so the
   // worker reads the connection settings and hands them over in the message.
@@ -133,14 +159,25 @@ async function startRecording(options) {
   state.tabId = await pickBarTab();
 
   await ensureOffscreen();
-  const result = await askOffscreen({
-    type: 'start',
-    options: { ...settings.prefs, ...(options || {}), siteUrl: settings.siteUrl, token: settings.token }
-  });
+  let result;
+  try {
+    result = await askOffscreen({
+      type: 'start',
+      options: { ...settings.prefs, ...(options || {}), siteUrl: settings.siteUrl, token: settings.token }
+    });
+  } catch (error) {
+    await closeOffscreen();
+    state = { status: 'idle', startedAt: 0, uid: null, tabId: null };
+    await reportFailure(error.message);
+    throw error;
+  }
   if (!result || !result.ok) {
     await closeOffscreen();
     state = { status: 'idle', startedAt: 0, uid: null, tabId: null };
-    throw new Error((result && result.error) || 'Could not start recording.');
+    const message = (result && result.error) || 'Could not start recording.';
+    // Closing the picker is a choice, not a fault worth shouting about.
+    if (!/cancelled/i.test(message)) { await reportFailure(message); }
+    throw new Error(message);
   }
 
   state.status = 'recording';
@@ -171,12 +208,10 @@ async function stopRecording() {
   state = { status: 'idle', startedAt: 0, uid: null, tabId: null };
 
   if (result && result.ok && result.shareUrl) {
+    await clearLastError();
     chrome.tabs.create({ url: result.shareUrl });
   } else if (result && !result.ok) {
-    chrome.notifications?.create?.({
-      type: 'basic', iconUrl: 'icons/icon-128.png',
-      title: 'MyLoom', message: 'Recording failed: ' + (result.error || 'unknown error')
-    });
+    await reportFailure(result.error || 'The recording could not be saved.');
   }
   return result || { ok: false, uid: finished.uid };
 }
@@ -232,18 +267,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Fallback picker for Chrome builds that refuse getDisplayMedia from an
     // offscreen document. Returns a stream id the offscreen doc can open.
     pickDesktopSource: async () => new Promise((resolve) => {
-      const tabPromise = chrome.tabs.query({ active: true, currentWindow: true });
-      tabPromise.then(([tab]) => {
+      if (!chrome.desktopCapture || !chrome.desktopCapture.chooseDesktopMedia) {
+        resolve({ ok: false, streamId: null, reason: 'desktopCapture unavailable' });
+        return;
+      }
+      // If the picker never comes back, give up rather than wedging the
+      // extension with no way out. Generous, so a real choice is never cut off.
+      let settled = false;
+      const finish = (value) => {
+        if (settled) { return; }
+        settled = true;
+        clearTimeout(guard);
+        resolve(value);
+      };
+      const guard = setTimeout(() => {
+        finish({ ok: false, streamId: null, reason: 'The screen picker did not respond.' });
+      }, 180000);
+
+      chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
         try {
           chrome.desktopCapture.chooseDesktopMedia(
             ['screen', 'window', 'tab', 'audio'],
             tab,
-            (streamId) => resolve({ ok: !!streamId, streamId: streamId || null })
+            // The second argument tells us whether the chosen source can give
+            // an audio track. Asking for audio when it cannot fails the capture.
+            (streamId, opts) => {
+              if (!streamId) {
+                // An empty id means the user closed the picker.
+                finish({ ok: false, streamId: null, cancelled: true });
+                return;
+              }
+              finish({
+                ok: true,
+                streamId,
+                canAudio: !!(opts && opts.canRequestAudioTrack)
+              });
+            }
           );
-        } catch (e) {
-          resolve({ ok: false, streamId: null });
+        } catch (error) {
+          finish({ ok: false, streamId: null, reason: error.message });
         }
-      }).catch(() => resolve({ ok: false, streamId: null }));
+      }).catch((error) => finish({ ok: false, streamId: null, reason: error.message }));
     }),
     failed: async () => {
       stopTicking();
@@ -251,8 +315,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       await removeBar();
       await closeOffscreen();
       state = { status: 'idle', startedAt: 0, uid: null, tabId: null };
+      await reportFailure(message.error || 'The recording stopped unexpectedly.');
       return { ok: true };
-    }
+    },
+    clearError: async () => { await clearLastError(); return { ok: true }; },
+    diagnose: async () => ({ ok: true, report: await diagnose() })
   };
 
   const handler = handlers[message.type];
@@ -263,6 +330,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     .catch((error) => sendResponse({ ok: false, error: error.message }));
   return true;   // keep the channel open for the async reply
 });
+
+/** Collect everything worth knowing when a recording will not start. */
+async function diagnose() {
+  const lines = [];
+  const manifest = chrome.runtime.getManifest();
+  const ua = navigator.userAgent.match(/Chrom(e|ium)\/([\d.]+)/);
+  lines.push('extension: ' + manifest.name + ' ' + manifest.version);
+  lines.push('browser: ' + (ua ? ua[0] : navigator.userAgent));
+  lines.push('platform: ' + (navigator.userAgentData?.platform || navigator.platform || 'unknown'));
+  lines.push('desktopCapture API: ' + (chrome.desktopCapture?.chooseDesktopMedia ? 'available' : 'MISSING'));
+  lines.push('offscreen API: ' + (chrome.offscreen ? 'available' : 'MISSING'));
+  lines.push('notifications API: ' + (chrome.notifications ? 'available' : 'MISSING'));
+
+  const settings = await loadSettings();
+  lines.push('site: ' + (settings.siteUrl || '(not set)'));
+  lines.push('token: ' + (settings.token ? settings.token.slice(0, 8) + '… (' + settings.token.length + ' chars)' : '(not set)'));
+
+  if (settings.siteUrl && settings.token) {
+    try {
+      const response = await fetch(
+        settings.siteUrl.replace(/\/+$/, '') + '/api.php?r=tokens/whoami',
+        { headers: { Authorization: 'Bearer ' + settings.token } }
+      );
+      const data = await response.json().catch(() => null);
+      lines.push('api check: HTTP ' + response.status + ' ' +
+        (data && data.ok ? 'ok, user ' + data.user.name : (data && data.error) || 'unreadable'));
+    } catch (error) {
+      lines.push('api check: FAILED — ' + error.message);
+    }
+  }
+
+  try {
+    await ensureOffscreen();
+    const pong = await askOffscreen({ type: 'ping' }, 8);
+    lines.push('offscreen document: ' + (pong && pong.ok ? 'responds' : 'created but silent'));
+    await closeOffscreen();
+  } catch (error) {
+    lines.push('offscreen document: FAILED — ' + error.message);
+  }
+
+  const stored = await chrome.storage.local.get('lastError');
+  if (stored.lastError) {
+    lines.push('last error: ' + stored.lastError.message +
+      ' (' + new Date(stored.lastError.at).toLocaleString() + ')');
+  }
+  return lines.join('\n');
+}
 
 chrome.commands?.onCommand?.addListener(async (command) => {
   if (command !== 'toggle-recording') { return; }

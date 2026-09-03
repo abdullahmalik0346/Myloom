@@ -43,27 +43,60 @@ function pickType() {
 
 /* --- Capture --------------------------------------------------------------- */
 
+function cancelled() {
+  const error = new Error('Screen sharing was cancelled.');
+  error.name = 'AbortError';
+  return error;
+}
+
+/**
+ * Acquire the screen.
+ *
+ * chrome.desktopCapture is the primary path: an offscreen document has no
+ * transient user activation, and getDisplayMedia() requires one, so calling it
+ * here throws NotAllowedError before the user ever sees a picker. The worker
+ * can open Chrome's own source picker instead and hand back a stream id.
+ * getDisplayMedia stays as a fallback for builds without desktopCapture.
+ */
 async function getScreen(options) {
-  try {
-    return await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: options.systemAudio !== false
-    });
-  } catch (error) {
-    if (error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) { throw error; }
-    // Some Chrome builds refuse getDisplayMedia from an offscreen document.
-    // Fall back to the extension picker, which returns a stream id instead.
-    const streamId = await chrome.runtime.sendMessage({ type: 'pickDesktopSource' })
-      .then((r) => (r && r.streamId) || null)
-      .catch(() => null);
-    if (!streamId) { throw error; }
-    return navigator.mediaDevices.getUserMedia({
-      video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: streamId } },
-      audio: options.systemAudio !== false
-        ? { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: streamId } }
-        : false
-    });
+  const picked = await chrome.runtime
+    .sendMessage({ type: 'pickDesktopSource' })
+    .catch(() => null);
+
+  if (picked && picked.cancelled) { throw cancelled(); }
+
+  if (picked && picked.streamId) {
+    const video = {
+      mandatory: {
+        chromeMediaSource: 'desktop',
+        chromeMediaSourceId: picked.streamId,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        maxFrameRate: 30
+      }
+    };
+    // Only ask for the audio track when the picker said it is available:
+    // requesting it otherwise fails the whole getUserMedia call.
+    const wantAudio = options.systemAudio !== false && picked.canAudio === true;
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video,
+        audio: wantAudio
+          ? { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: picked.streamId } }
+          : false
+      });
+    } catch (error) {
+      if (!wantAudio) { throw error; }
+      // Some sources advertise audio then refuse it; keep the video.
+      return navigator.mediaDevices.getUserMedia({ video, audio: false });
+    }
   }
+
+  // No stream id: fall back to the standard API and let it report why.
+  return navigator.mediaDevices.getDisplayMedia({
+    video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: options.systemAudio !== false
+  });
 }
 
 function sizeCanvas(mode) {
@@ -332,6 +365,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   const run = async () => {
     switch (message.type) {
+      case 'ping': return { ok: true };
       case 'start': return start(message.options || {});
       case 'stop': return stop();
       case 'cancel': return cancel();

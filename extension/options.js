@@ -51,3 +51,34 @@ document.getElementById('forget').addEventListener('click', async () => {
   tokenInput.value = '';
   setStatus('Disconnected.', '');
 });
+
+/* --- Diagnostics ---------------------------------------------------------- */
+
+const diagnoseButton = document.getElementById('diagnose');
+const report = document.getElementById('report');
+const copyButton = document.getElementById('copy-report');
+
+diagnoseButton.addEventListener('click', async () => {
+  diagnoseButton.disabled = true;
+  diagnoseButton.textContent = 'Checking…';
+  report.hidden = false;
+  report.textContent = 'Running…';
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'diagnose' });
+    report.textContent = (result && result.report) || 'No report came back.';
+    copyButton.hidden = false;
+  } catch (error) {
+    report.textContent = 'Diagnostics failed: ' + error.message +
+      '\n\nThe extension service worker may have stopped. Reload the extension on ' +
+      'chrome://extensions and try again.';
+  } finally {
+    diagnoseButton.disabled = false;
+    diagnoseButton.textContent = 'Run diagnostics';
+  }
+});
+
+copyButton.addEventListener('click', async () => {
+  await navigator.clipboard.writeText(report.textContent).catch(() => {});
+  copyButton.textContent = 'Copied';
+  setTimeout(() => { copyButton.textContent = 'Copy report'; }, 1500);
+});

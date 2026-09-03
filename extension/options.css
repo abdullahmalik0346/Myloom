@@ -40,3 +40,10 @@ ul { margin: 0; padding-left: 18px; }
 li { margin-bottom: 6px; }
 kbd { background: var(--line); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
 a { color: var(--accent); }
+
+/* Diagnostics output: meant to be read and copied, so keep it monospace. */
+pre#report {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 9px;
+  padding: 12px 14px; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap;
+  word-break: break-word; margin: 14px 0 10px; max-height: 320px; overflow: auto;
+}
