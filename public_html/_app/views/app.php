@@ -39,7 +39,7 @@ $boot = [
 
 <?php foreach ([
     'core', 'player', 'overlays', 'export', 'audio', 'recorder', 'comments', 'editor', 'cut',
-    'views', 'record', 'video', 'settings', 'app'
+    'views', 'record', 'shot', 'video', 'settings', 'app'
 ] as $script): ?>
 <script src="<?= Util::e(Util::url('assets/js/' . $script . '.js?v=' . MYLOOM)) ?>"></script>
 <?php endforeach; ?>

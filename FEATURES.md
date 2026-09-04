@@ -8,6 +8,7 @@ not do at all. Loom's paid tiers (Business / Business + AI) are the reference.
 | Loom paid | MyLoom | Notes |
 |---|---|---|
 | Screen, tab, or camera, each with an optional camera bubble | ✅ | Same three modes in the web app and the extension; the bubble is composited into a single track, and can be moved between the four corners or resized, mid-recording included |
+| Screenshots, annotated and shared | ✅ | Capture a screen, window or tab; arrow, box, pen, text, blur and crop; shared by link with comments, like a recording |
 | Unlimited recording length | ✅ | Chunks upload during recording, so length is bounded by your disk, not memory |
 | Unlimited number of videos | ✅ | No per-account caps anywhere in the code |
 | HD / 1080p recording | ✅ | Capped at 1080p by default; raise it in `assets/js/recorder.js` (`sizeCanvas`) |

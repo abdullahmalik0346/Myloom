@@ -76,6 +76,11 @@
     } else if (path.indexOf('/record') === 0) {
       setActiveNav('record');
       cleanupView = ML.Views.record(contentNode);
+    } else if (path.indexOf('/shot') === 0) {
+      setActiveNav('library');
+      cleanupView = ML.Views.shot(contentNode, {
+        uid: queryParam('uid'), src: queryParam('src'), title: queryParam('title')
+      });
     } else if ((match = path.match(/^\/video\/([A-Za-z0-9_-]+)/))) {
       setActiveNav('library');
       cleanupView = ML.Views.video(contentNode, {

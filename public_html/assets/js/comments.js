@@ -51,6 +51,8 @@
         renderComposerMeta();
       }
     }, '⏱ Timestamp');
+    // A screenshot has no timeline to pin a comment to.
+    if (options.allowTimestamps === false) { stampBtn.style.display = 'none'; }
     var stampLabel = el('span.tiny.muted');
     var replyLabel = el('span.tiny.muted');
 

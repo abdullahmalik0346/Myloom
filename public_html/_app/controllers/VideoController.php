@@ -19,6 +19,7 @@ final class VideoController
                 : null,
             'status'         => $v['status'],
             'source'         => $v['source'],
+            'kind'           => $v['kind'] ?? 'video',
             'visibility'     => $v['visibility'],
             'has_password'   => !empty($v['password_hash']),
             'expires_at'     => $v['expires_at'],
@@ -210,8 +211,16 @@ final class VideoController
         if (!in_array($source, ['screen', 'camera', 'screen_camera', 'upload'], true)) {
             $source = 'screen';
         }
-        $mime = Http::str('mime', 'video/webm');
-        $ext  = str_contains($mime, 'mp4') ? 'mp4' : 'webm';
+        // A screenshot travels the same road as a recording: same table, same
+        // upload, same share page. Only the file and the viewer differ.
+        $kind = Http::str('kind', 'video') === 'image' ? 'image' : 'video';
+        $mime = Http::str('mime', $kind === 'image' ? 'image/png' : 'video/webm');
+        if ($kind === 'image') {
+            $ext  = str_contains($mime, 'jpeg') || str_contains($mime, 'jpg') ? 'jpg' : 'png';
+            $mime = $ext === 'jpg' ? 'image/jpeg' : 'image/png';
+        } else {
+            $ext = str_contains($mime, 'mp4') ? 'mp4' : 'webm';
+        }
 
         $spaceId = Http::int('space_id') ?: null;
         if ($spaceId && !Db::value('SELECT id FROM spaces WHERE id = ? AND workspace_id = ?', [$spaceId, $wsId])) {
@@ -226,11 +235,16 @@ final class VideoController
             'workspace_id' => $wsId,
             'space_id'     => $spaceId,
             'owner_id'     => (int)$user['id'],
-            'title'        => mb_substr(Http::str('title', 'Untitled recording'), 0, 255) ?: 'Untitled recording',
+            'title'        => mb_substr(
+                Http::str('title', $kind === 'image' ? 'Screenshot' : 'Untitled recording'),
+                0,
+                255
+            ) ?: ($kind === 'image' ? 'Screenshot' : 'Untitled recording'),
             'file_path'    => $relPath,
             'mime'         => $mime,
             'status'       => 'recording',
             'source'       => $source,
+            'kind'         => $kind,
             'visibility'   => Http::str('visibility', 'link'),
             'cta_label'    => $ws['default_cta_label'] ?? null,
             'cta_url'      => $ws['default_cta_url'] ?? null,

@@ -7,7 +7,7 @@
    is delegated to offscreen.js and reported back by message.
    ========================================================================== */
 
-import { loadSettings, saveSettings } from './config.js';
+import { loadSettings, saveSettings, api, uploadChunk } from './config.js';
 
 const OFFSCREEN_PATH = 'offscreen.html';
 
@@ -304,6 +304,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       broadcastToBar({ type: 'bubble', corner: prefs.bubbleCorner });
       return { ok: true, corner: prefs.bubbleCorner, size: prefs.bubbleSize };
+    },
+    /**
+     * A screenshot of the visible tab, uploaded as an image and opened in the
+     * web app's editor. captureVisibleTab is the only way to get the pixels of
+     * a page from an extension without a screen-share prompt.
+     */
+    screenshot: async () => {
+      const settings = await loadSettings();
+      if (!settings.siteUrl || !settings.token) {
+        chrome.runtime.openOptionsPage();
+        throw new Error('Connect the extension to your MyLoom first.');
+      }
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab) { throw new Error('No tab to capture.'); }
+
+      let dataUrl;
+      try {
+        dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+      } catch (error) {
+        throw new Error(/activeTab|permission/i.test(error.message || '')
+          ? 'Chrome will not let an extension photograph this page. Try a normal web page.'
+          : error.message);
+      }
+
+      const blob = await (await fetch(dataUrl)).blob();
+      const created = await api(settings.siteUrl, settings.token, 'videos/create', {
+        kind: 'image',
+        mime: 'image/png',
+        title: tab.title ? tab.title.slice(0, 120) : 'Screenshot',
+        visibility: 'link'
+      });
+      await uploadChunk(settings.siteUrl, settings.token, created.upload_key, 0, blob);
+      await api(settings.siteUrl, settings.token, 'upload/finish', {
+        key: created.upload_key,
+        duration: 0,
+        width: 0,
+        height: 0
+      });
+
+      // Straight into the editor, which is where a screenshot usually needs to go.
+      const site = settings.siteUrl.replace(/\/+$/, '');
+      await chrome.tabs.create({
+        url: site + '/shot?uid=' + encodeURIComponent(created.uid)
+          + '&src=' + encodeURIComponent(site + '/file.php?v=' + encodeURIComponent(created.uid))
+      });
+      return { ok: true, uid: created.uid };
     },
     /** Camera off or on, without ending the recording. */
     setCamera: async () => {

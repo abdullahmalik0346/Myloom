@@ -74,6 +74,7 @@ final class WatchController
             'width'           => (int)$video['width'],
             'height'          => (int)$video['height'],
             'mime'            => $video['mime'],
+            'kind'            => $video['kind'] ?? 'video',
             'media_url'       => Util::url($mediaQuery),
             'poster'          => !empty($video['thumbnail']) ? Util::url('file.php?t=' . rawurlencode((string)$video['uid'])) : null,
             'download_url'    => $allowDownload ? Util::url($mediaQuery . '&dl=1') : null,

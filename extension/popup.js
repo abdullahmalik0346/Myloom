@@ -275,8 +275,22 @@ async function render() {
       render();
     }));
   }
+  const shotButton = el('button.btn', {
+    onclick: async () => {
+      shotButton.disabled = true;
+      shotButton.textContent = 'Capturing…';
+      const result = await chrome.runtime.sendMessage({ type: 'screenshot' })
+        .catch((e) => ({ ok: false, error: e.message }));
+      if (result && result.ok) { window.close(); return; }
+      shotButton.disabled = false;
+      shotButton.textContent = '📸 Screenshot';
+      error.textContent = (result && result.error) || 'Could not take a screenshot.';
+    }
+  }, '📸 Screenshot');
+
   app.appendChild(el('div.actions', {}, [
     startButton,
+    shotButton,
     el('button.btn', { onclick: () => chrome.tabs.create({ url: settings.siteUrl }) }, 'Open my library')
   ]));
   app.appendChild(el('div.footlinks', {}, [

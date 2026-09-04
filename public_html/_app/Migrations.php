@@ -10,7 +10,7 @@
 final class Migrations
 {
     /** Bump this when adding a migration below. */
-    public const VERSION = 6;
+    public const VERSION = 7;
 
     public static function run(): void
     {
@@ -35,12 +35,28 @@ final class Migrations
             if ($current < 6) {
                 self::v6Engagement();
             }
+            if ($current < 7) {
+                self::v7Screenshots();
+            }
             Config::putSetting('schema_version', (string)self::VERSION);
         } catch (Throwable $e) {
             // A failed migration must not take the whole app down; log and carry
             // on so the rest of the site still works.
             error_log('[myloom][migrate] ' . $e->getMessage());
         }
+    }
+
+    /**
+     * v7 — screenshots.
+     *
+     * A screenshot is the same thing as a recording in every way that matters
+     * here: it is owned, shared by link, commented on and counted. Only the
+     * file differs, so it lives in the same table with a `kind` to tell them
+     * apart rather than in a parallel one.
+     */
+    private static function v7Screenshots(): void
+    {
+        self::addColumn('videos', 'kind', "ENUM('video','image') NOT NULL DEFAULT 'video' AFTER `source`");
     }
 
     /** v6 — link-click tracking, sign-in gate, Slack alerts and watermarks. */

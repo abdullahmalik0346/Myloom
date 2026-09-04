@@ -17,6 +17,8 @@ how far they got, where they dropped off, and what they said in the comments.
 - **Record** — screen / tab / camera with an optional camera bubble, mic and
   system audio, pause and resume, 3-2-1 countdown, live annotation,
   unlimited length
+- **Screenshot** — capture a screen, window or tab, mark it up with arrows,
+  boxes, text, pen and blur, crop it, and share it by link like a recording
 - **Share** — link, workspace-only, public or private; per-recipient tracked
   links with their own password, expiry and view limit; embed anywhere
 - **Analyse** — views, unique viewers, watch time, completion rate, a

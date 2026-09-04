@@ -221,6 +221,7 @@
       uid: boot.uid, token: boot.token, player: player,
       canManage: video.can_manage, signedIn: boot.signedIn,
       allowComments: video.allow_comments, allowReactions: video.allow_reactions,
+      allowTimestamps: video.kind !== 'image',
       onCount: function (count) { commentCount.textContent = count ? count + '' : ''; }
     });
 
@@ -242,7 +243,41 @@
 
   /* --- Player + view tracking ------------------------------------------------ */
 
+  /**
+   * A screenshot shares everything with a recording except the playing. The
+   * comments panel expects a player, so it gets a stand-in: comments on an
+   * image are simply not pinned to a time.
+   */
+  function buildImage(node) {
+    clear(node);
+    var frame = el('div.shot-frame', {}, el('img', {
+      src: video.media_url, alt: video.title,
+      onload: function () { countView(); }
+    }));
+    node.appendChild(frame);
+    player = {
+      root: frame,
+      currentTime: function () { return 0; },
+      seek: function () {},
+      play: function () {},
+      pause: function () {},
+      setMarkers: function () {},
+      setChapters: function () {},
+      setCaptions: function () {},
+      setCaptionTracks: function () {},
+      activeCaptionTrack: function () { return null; },
+      floatEmoji: function (emoji) {
+        var node2 = el('div.reaction-float', { text: emoji, style: { left: (12 + Math.random() * 66) + '%' } });
+        frame.appendChild(node2);
+        setTimeout(function () { node2.remove(); }, 1750);
+      },
+      destroy: function () {}
+    };
+    return player;
+  }
+
   function buildPlayer(node, options) {
+    if (video.kind === 'image') { return buildImage(node); }
     player = ML.Player(node, {
       src: video.media_url,
       poster: video.poster,

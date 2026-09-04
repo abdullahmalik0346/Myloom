@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS `videos` (
   `gif_preview`   VARCHAR(255) DEFAULT NULL,
   `status`        ENUM('recording','processing','ready','failed') NOT NULL DEFAULT 'processing',
   `source`        ENUM('screen','camera','screen_camera','upload') NOT NULL DEFAULT 'screen',
+  `kind`          ENUM('video','image') NOT NULL DEFAULT 'video',
   `visibility`    ENUM('private','workspace','link','public') NOT NULL DEFAULT 'link',
   `password_hash` VARCHAR(255) DEFAULT NULL,
   `expires_at`    DATETIME DEFAULT NULL,

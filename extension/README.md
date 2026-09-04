@@ -26,6 +26,14 @@ The token is stored only in your browser, and it is the only credential the
 extension holds — it never sees your password. Revoke it any time from the same
 Settings page and the extension stops working immediately.
 
+## Screenshots
+
+**📸 Screenshot** in the popup photographs the visible part of the tab you are
+on, saves it to your MyLoom and opens it in the editor: arrow, box, pen, text,
+blur and crop. Save it and it gets a share link, comments and view counts like
+any recording. The web app has the same button in the library, where it can
+capture a whole display or a window as well as a tab.
+
 ## Allow the camera and microphone — once
 
 The first time you press **Start recording** a tab opens asking for your camera

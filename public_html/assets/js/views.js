@@ -25,12 +25,13 @@
     var previewNode = null;
     var thumbHolder = el('div.thumb', { onclick: openVideo, title: 'Open ' + video.title }, [
       thumbInner,
-      el('div.play-overlay', {}, el('i')),
-      el('span.len', { text: video.duration_human })
-    ]);
+      // A screenshot has no length to show and nothing to preview on hover.
+      video.kind === 'image' ? null : el('div.play-overlay', {}, el('i')),
+      el('span.len', { text: video.kind === 'image' ? '📸' : video.duration_human })
+    ].filter(Boolean));
 
     function startPreview() {
-      if (previewNode || video.status !== 'ready') { return; }
+      if (previewNode || video.status !== 'ready' || video.kind === 'image') { return; }
       previewTimer = setTimeout(function () {
         previewNode = el('video.thumb-preview', {
           src: video.share_url ? null : null,
@@ -297,6 +298,22 @@
             onclick: function () { App.newSpaceDialog(function () { load(); }); }
           }, '📁 New folder'),
           el('button.btn', { type: 'button', onclick: function () { uploadDialog(load); } }, '⬆ Upload'),
+          el('button.btn', {
+            type: 'button',
+            title: 'Capture a screen, a window or a tab',
+            onclick: function (event) {
+              var button = event.target;
+              button.disabled = true;
+              // getDisplayMedia needs the click that started it, so capture
+              // here and hand the picture to the editor rather than the reverse.
+              ML.Shot.capture().then(function (canvas) {
+                ML.Shot.pending = canvas;
+                App.go('/shot');
+              }).catch(function (error) {
+                if (!/cancel|denied|permission/i.test(error.message || '')) { ML.toastError(error); }
+              }).then(function () { button.disabled = false; });
+            }
+          }, '📸 Screenshot'),
           el('button.btn.primary', { type: 'button', onclick: function () { App.go('/record'); } }, '⏺ New recording')
         ])
       ]),

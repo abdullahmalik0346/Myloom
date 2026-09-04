@@ -31,6 +31,11 @@
 
     /* --- Layout ----------------------------------------------------------- */
 
+    /** A screenshot has no timeline, so several panes read differently. */
+    function isImage() {
+      return video && video.kind === 'image';
+    }
+
     function render() {
       var tabsNode = el('div.tabs');
       var paneNode = el('div');
@@ -39,9 +44,10 @@
         { key: 'overview', label: 'Overview' },
         { key: 'share', label: 'Share' },
         { key: 'analytics', label: 'Analytics' },
-        { key: 'transcript', label: 'Transcript' },
+        // A screenshot has nothing to transcribe.
+        isImage() ? null : { key: 'transcript', label: 'Transcript' },
         { key: 'settings', label: 'Settings' }
-      ];
+      ].filter(Boolean);
       tabs.forEach(function (item) {
         tabsNode.appendChild(el('button.tab' + (tab === item.key ? '.active' : ''), {
           type: 'button',
@@ -63,9 +69,10 @@
               el('span', { text: ML.dateTimeLabel(video.created_at) }),
               el('span', {}, '·'),
               el('span', {
-              text: video.is_cut && video.play_duration_human
-                ? video.play_duration_human + ' (cut from ' + video.duration_human + ')'
-                : video.duration_human
+              text: isImage() ? (video.width ? video.width + ' × ' + video.height : 'Screenshot')
+                : (video.is_cut && video.play_duration_human
+                  ? video.play_duration_human + ' (cut from ' + video.duration_human + ')'
+                  : video.duration_human)
             }),
               el('span', {}, '·'),
               el('span', { text: video.view_count + ' views' }),
@@ -123,7 +130,7 @@
               ML.copyField(video.share_url),
               el('button.btn.block', {
                 type: 'button', onclick: function () { ML.Export.open({ video: video }); }
-              }, '⬇ Download (WebM / MP4)'),
+              }, isImage() ? '⬇ Download PNG' : '⬇ Download (WebM / MP4)'),
               el('button.btn.block', { type: 'button', onclick: function () { embedDialog(video); } }, '</> Embed code'),
               el('button.btn.block', { type: 'button', onclick: function () { thumbnailDialog(video, refresh); } }, '🖼 Set thumbnail'),
               el('button.btn.block', {
@@ -178,23 +185,50 @@
         ])
       ]));
 
-      player = ML.Player(playerNode, {
-        src: video.media_url,
-        poster: video.thumbnail,
-        fallbackDuration: video.duration,
-        trimStart: video.trim_start,
-        trimEnd: video.trim_end,
-        segments: video.segments,
-        chapters: video.chapters || []
-      });
-      ML.Overlays.attach(player, video.annotations || []);
-      ML.Overlays.attachWatermark(player, video.watermark);
-      loadCaptionsInto(player);
+      if (isImage()) {
+        player = showImage(playerNode);
+      } else {
+        player = ML.Player(playerNode, {
+          src: video.media_url,
+          poster: video.thumbnail,
+          fallbackDuration: video.duration,
+          trimStart: video.trim_start,
+          trimEnd: video.trim_end,
+          segments: video.segments,
+          chapters: video.chapters || []
+        });
+        ML.Overlays.attach(player, video.annotations || []);
+        ML.Overlays.attachWatermark(player, video.watermark);
+        loadCaptionsInto(player);
+      }
 
       ML.CommentsPanel(commentsNode, {
         uid: uid, player: player, canManage: true, signedIn: true,
-        allowComments: video.allow_comments, allowReactions: video.allow_reactions
+        allowComments: video.allow_comments, allowReactions: video.allow_reactions,
+        allowTimestamps: !isImage()
       });
+    }
+
+    /** A screenshot instead of a player, with a way back into the editor. */
+    function showImage(node) {
+      clear(node);
+      node.appendChild(el('div.shot-frame', {}, el('img', { src: video.media_url, alt: video.title })));
+      node.appendChild(el('div.row.mt', {}, el('button.btn', {
+        type: 'button',
+        onclick: function () {
+          App.go('/shot?uid=' + encodeURIComponent(uid) + '&src=' + encodeURIComponent(video.media_url));
+        }
+      }, '✎ Edit screenshot')));
+      return {
+        root: node,
+        currentTime: function () { return 0; },
+        seek: function () {}, play: function () {}, pause: function () {},
+        setMarkers: function () {}, setChapters: function () {},
+        setCaptions: function () {}, setCaptionTracks: function () {},
+        activeCaptionTrack: function () { return null; },
+        floatEmoji: function () {},
+        destroy: function () {}
+      };
     }
 
     function loadCaptionsInto(target) {
