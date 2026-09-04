@@ -293,6 +293,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       broadcastToBar({ type: 'bubble', corner: prefs.bubbleCorner });
       return { ok: true, corner: prefs.bubbleCorner, size: prefs.bubbleSize };
     },
+    /** Something went wrong inside the recorder; keep it for diagnostics. */
+    offscreenError: async () => {
+      const { internalErrors = [] } = await chrome.storage.local.get('internalErrors');
+      internalErrors.push({ at: Date.now(), message: String(message.error).slice(0, 300) });
+      await chrome.storage.local.set({ internalErrors: internalErrors.slice(-5) });
+      return { ok: true };
+    },
     // Relayed by the offscreen document when the user stops sharing from
     // Chrome's own bar, so the extension does not sit there thinking it is live.
     sourceEnded: async () => stopRecording(),
@@ -442,6 +449,16 @@ async function diagnose() {
     } catch (error) {
       lines.push('api check: FAILED — ' + error.message);
     }
+  }
+
+  const { internalErrors = [] } = await chrome.storage.local.get('internalErrors');
+  if (internalErrors.length) {
+    lines.push('recorder errors (most recent last):');
+    internalErrors.forEach((entry) => {
+      lines.push('  ' + new Date(entry.at).toLocaleString() + ' — ' + entry.message);
+    });
+  } else {
+    lines.push('recorder errors: none recorded');
   }
 
   try {

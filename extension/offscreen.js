@@ -9,6 +9,26 @@
 
 import { api, uploadChunk } from './config.js';
 
+/*
+ * Nothing renders this document, so anything that goes wrong in it is invisible
+ * — it lands on chrome://extensions as "offscreen.html:0" with no way to see
+ * what happened. Send it to the worker, which keeps the last few for the
+ * diagnostics report.
+ */
+function reportInternal(kind, detail) {
+  chrome.runtime
+    .sendMessage({ type: 'offscreenError', error: kind + ': ' + detail })
+    .catch(() => { /* the worker is asleep; nothing more to be done here */ });
+}
+self.addEventListener('error', (event) => {
+  reportInternal('error', (event.message || 'unknown')
+    + ' (' + (event.filename || '?').split('/').pop() + ':' + (event.lineno || 0) + ')');
+});
+self.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  reportInternal('unhandled rejection', (reason && reason.message) || String(reason));
+});
+
 const state = {
   recorder: null,
   streams: [],
@@ -354,7 +374,10 @@ async function pump() {
       return;
     }
     await new Promise((r) => setTimeout(r, Math.min(8000, 600 * 2 ** upload.failures)));
-    await pump();
+    // Retrying from inside the catch: a failure here is not covered by it.
+    try { await pump(); } catch (retryError) {
+      fail('Upload failed after several retries: ' + retryError.message);
+    }
   }
 }
 
@@ -460,7 +483,11 @@ async function start(options) {
     audioBitsPerSecond: 128000
   });
   state.recorder.ondataavailable = (event) => {
-    if (event.data && event.data.size) { state.upload.queue.push(event.data); pump(); }
+    if (!event.data || !event.data.size) { return; }
+    state.upload.queue.push(event.data);
+    // An event handler cannot await, so the failure has to be caught here or it
+    // becomes an unhandled rejection with nowhere to show itself.
+    pump().catch((error) => fail('Upload failed: ' + error.message));
   };
   state.recorder.onerror = () => fail('The recorder stopped unexpectedly.');
   state.recorder.start(3000);

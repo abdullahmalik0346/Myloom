@@ -79,6 +79,7 @@ The usual causes:
 | *Not connected* | No site address or token saved | Options → paste the address and an `mlt_…` token, then **Save & test connection** |
 | Recording runs but the library stays empty | The server rejected the upload | Diagnostics will show the API error; check the token has not been revoked |
 | The saved video is a still picture with sound | Fixed in this version | Reload the extension at `chrome://extensions` |
+| An error listed against `offscreen.html` | Something failed inside the recorder | Options → **Run diagnostics**; the report names it under *recorder errors* |
 | No voice on the recording, no camera bubble | Camera/mic never allowed | Popup → **Camera & mic access** → Allow |
 | *Recording without your microphone* notice | Same, or another program holds the device | As above; diagnostics prints both permission states |
 
@@ -124,6 +125,11 @@ The service worker cannot touch media APIs, so all capture happens in an
 offscreen document and reports back by message. `chrome.storage` is not
 available to offscreen documents either, which is why the worker reads the
 settings and passes them in when starting.
+
+Errors in the offscreen document have nowhere to appear — `chrome://extensions`
+shows them as `offscreen.html:0 (anonymous function)` and no more — so it
+forwards its own uncaught errors and unhandled rejections to the worker, which
+keeps the last five for the diagnostics report.
 
 An offscreen document is never rendered, and two ordinary things follow from
 that. `requestAnimationFrame` never fires there — measured, 0 calls in three
