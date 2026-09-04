@@ -8,7 +8,7 @@ export async function loadSettings() {
     siteUrl: (stored.siteUrl || '').replace(/\/+$/, ''),
     token: stored.token || '',
     prefs: Object.assign(
-      { mode: 'screen', camBubble: true, bubbleCorner: 'bl', bubbleSize: 'm',
+      { mode: 'screen', camBubble: true, bubbleCorner: 'bl', bubbleSize: 'm', cameraOn: true,
         mic: true, systemAudio: true, countdown: true },
       stored.prefs || {}
     )

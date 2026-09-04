@@ -77,6 +77,7 @@
       // so it can sit over either of the screen modes. Matches the extension.
       mode: 'screen',
       camBubble: true,
+      cameraOn: true,
       state: 'idle',
       micEnabled: true,
       systemAudio: true,
@@ -108,6 +109,7 @@
     var rafId = null;
     var frameTimer = null;
     var lastDrawAt = 0;
+    var hasInk = false;         // nothing drawn yet: skip compositing the pen layer
     var startedAt = 0;
     var pausedTotal = 0;
     var pausedAt = 0;
@@ -148,8 +150,21 @@
 
     /** True when a camera bubble should be composited over the screen. */
     function wantsBubble() {
-      return self.mode !== 'camera' && self.camBubble;
+      return self.mode !== 'camera' && self.camBubble && self.cameraOn;
     }
+
+    /**
+     * Turn the camera off and on mid-recording, without dropping the device —
+     * disabling the track blanks it instantly and reversibly, where stopping it
+     * would need the permission dance again to come back.
+     */
+    self.setCameraOn = function (on) {
+      self.cameraOn = !!on;
+      if (camStream) {
+        camStream.getVideoTracks().forEach(function (track) { track.enabled = self.cameraOn; });
+      }
+      return self.cameraOn;
+    };
 
     function setState(state) {
       self.state = state;
@@ -272,13 +287,18 @@
      */
     function startRenderLoop() {
       if (rafId || frameTimer) { return; }
+      // The recorder samples the canvas at options.fps, so painting on every
+      // animation frame — 60 or 120 a second on most machines — is two to four
+      // times the work for no gain, and enough of it at 1080p for Chrome to
+      // start warning about the tab.
+      var minGap = 1000 / (options.fps || 30) - 2;
       var paint = function () {
         lastDrawAt = Date.now();
         drawFrame();
       };
       var loop = function () {
         rafId = requestAnimationFrame(loop);
-        paint();
+        if (Date.now() - lastDrawAt >= minGap) { paint(); }
       };
       rafId = requestAnimationFrame(loop);
       frameTimer = setInterval(function () {
@@ -306,7 +326,7 @@
       if (wantsBubble() && camVideo.videoWidth) {
         drawBubble(w, h);
       }
-      ctx.drawImage(drawCanvas, 0, 0);
+      if (hasInk) { ctx.drawImage(drawCanvas, 0, 0); }
     }
 
     function drawBubble(w, h) {
@@ -361,10 +381,14 @@
       drawCtx.moveTo(lastPoint.x, lastPoint.y);
       drawCtx.lineTo(point.x, point.y);
       drawCtx.stroke();
+      hasInk = true;
       lastPoint = point;
     };
     self.penEnd = function () { drawing = false; lastPoint = null; };
-    self.clearDrawing = function () { drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); };
+    self.clearDrawing = function () {
+      drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+      hasInk = false;
+    };
 
     /** Move the camera bubble; coordinates are 0-1 relative to the stage. */
     self.moveBubble = function (nx, ny) {

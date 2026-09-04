@@ -205,7 +205,10 @@ async function startRecording(options) {
   startTicking();
   await injectBar(state.tabId);
   broadcastToBar({ type: 'state', status: 'recording' });
-  if (result.bubble) { broadcastToBar({ type: 'bubble', corner: result.bubble }); }
+  if (result.bubble) {
+    broadcastToBar({ type: 'bubble', corner: result.bubble });
+    broadcastToBar({ type: 'camera', on: settings.prefs.cameraOn !== false });
+  }
   return result;
 }
 
@@ -283,15 +286,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     setBubble: async () => {
       const settings = await loadSettings();
       const prefs = { ...settings.prefs };
-      if (message.corner) { prefs.bubbleCorner = message.corner; }
+      if (message.corner) {
+        prefs.bubbleCorner = message.corner;
+        delete prefs.bubbleX;                    // a corner overrides a drag
+        delete prefs.bubbleY;
+      }
+      if (typeof message.x === 'number' && typeof message.y === 'number') {
+        prefs.bubbleX = message.x;
+        prefs.bubbleY = message.y;
+      }
       if (message.size) { prefs.bubbleSize = message.size; }
       await saveSettings({ prefs });
       if (state.status === 'recording' || state.status === 'paused') {
-        await askOffscreen({ type: 'setBubble', corner: message.corner, size: message.size })
-          .catch(() => { /* the recording is ending; the saved value still stands */ });
+        await askOffscreen({
+          type: 'setBubble', corner: message.corner, size: message.size, x: message.x, y: message.y
+        }).catch(() => { /* the recording is ending; the saved value still stands */ });
       }
       broadcastToBar({ type: 'bubble', corner: prefs.bubbleCorner });
       return { ok: true, corner: prefs.bubbleCorner, size: prefs.bubbleSize };
+    },
+    /** Camera off or on, without ending the recording. */
+    setCamera: async () => {
+      const settings = await loadSettings();
+      const prefs = { ...settings.prefs, cameraOn: message.on !== false };
+      await saveSettings({ prefs });
+      if (state.status === 'recording' || state.status === 'paused') {
+        await askOffscreen({ type: 'setCamera', on: prefs.cameraOn }).catch(() => {});
+      }
+      broadcastToBar({ type: 'camera', on: prefs.cameraOn });
+      return { ok: true, on: prefs.cameraOn };
     },
     /** Something went wrong inside the recorder; keep it for diagnostics. */
     offscreenError: async () => {

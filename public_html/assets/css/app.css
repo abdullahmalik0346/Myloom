@@ -703,3 +703,4 @@ table.data tr:hover td { background: var(--surface-2); }
 .corner-row { display: flex; gap: 4px; }
 .corner-row .btn.sm { padding: 4px 8px; line-height: 1; min-width: 0; }
 .corner-row .btn.sm.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.sm.off { opacity: .55; }

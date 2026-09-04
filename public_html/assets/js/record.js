@@ -197,6 +197,18 @@
       oninput: function (event) { if (recorder) { recorder.setBubbleSize(Number(event.target.value) / 100); } }
     });
 
+    // Drop the camera out of the recording without ending it — for the stretch
+    // where the screen is the point and a face in the corner is in the way.
+    var cameraBtn = el('button.btn.sm', {
+      type: 'button', title: 'Turn the camera bubble off or on',
+      onclick: function () {
+        if (!recorder) { return; }
+        var on = recorder.setCameraOn(!recorder.cameraOn);
+        cameraBtn.textContent = on ? '🎥' : '🚫';
+        cameraBtn.classList.toggle('off', !on);
+      }
+    }, '🎥');
+
     // Dragging works on the preview, but only while you are looking at it. The
     // corner buttons put the bubble somewhere definite, mid-recording included.
     var corners = [
@@ -232,7 +244,7 @@
       el('span.grow'),
       penToggle, palette,
       el('label.tiny.muted.row', { style: { gap: '6px' } }, ['Bubble', bubbleSize]),
-      cornerRow,
+      cameraBtn, cornerRow,
       timerLabel
     ]);
 

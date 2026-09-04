@@ -72,3 +72,15 @@ button.link {
 }
 .pick:hover { border-color: rgba(127, 127, 140, .45); }
 .pick.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pad {
+  position: relative; height: 76px; border-radius: 9px; margin-bottom: 7px; cursor: crosshair;
+  background: var(--soft, rgba(127, 127, 140, .12));
+  border: 1px solid rgba(127, 127, 140, .3); touch-action: none;
+}
+.padDot {
+  position: absolute; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, .4);
+  pointer-events: none;
+}
+.pick.wide { flex: 1; }
+.pick.off { opacity: .6; }

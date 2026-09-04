@@ -74,6 +74,16 @@ const SIZES = [{ key: 's', label: 'S' }, { key: 'm', label: 'M' }, { key: 'l', l
  * recorder reads the placement on every frame — which is the only way to move
  * it once you have left this tab.
  */
+/** The controls report changes in their own words; store them in prefs terms. */
+function normalisePatch(patch) {
+  const out = {};
+  if (patch.corner) { out.bubbleCorner = patch.corner; out.bubbleX = undefined; out.bubbleY = undefined; }
+  if (patch.size) { out.bubbleSize = patch.size; }
+  if (typeof patch.bubbleX === 'number') { out.bubbleX = patch.bubbleX; out.bubbleY = patch.bubbleY; }
+  if (typeof patch.cameraOn === 'boolean') { out.cameraOn = patch.cameraOn; }
+  return out;
+}
+
 function bubbleControls(prefs, onChange) {
   const corner = prefs.bubbleCorner || 'bl';
   const size = prefs.bubbleSize || 'm';
@@ -91,10 +101,58 @@ function bubbleControls(prefs, onChange) {
     item.glyph || item.label
   )));
 
+  // A miniature of the screen: drag the dot to put the bubble anywhere. There
+  // is no preview to drag on — the recorder is invisible — and an overlay on
+  // the page would end up inside the recording, so the handle lives here.
+  const dot = el('div.padDot');
+  const pad = el('div.pad', {}, dot);
+  const place = (x, y) => {
+    dot.style.left = (x * 100) + '%';
+    dot.style.top = (y * 100) + '%';
+  };
+  place(typeof prefs.bubbleX === 'number' ? prefs.bubbleX : (corner.indexOf('l') >= 0 ? 0.04 : 0.96),
+    typeof prefs.bubbleY === 'number' ? prefs.bubbleY : (corner.indexOf('t') >= 0 ? 0.04 : 0.96));
+
+  const dragTo = (event) => {
+    const box = pad.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - box.left) / box.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - box.top) / box.height));
+    place(x, y);
+    return { x, y };
+  };
+  let dragging = false;
+  pad.addEventListener('pointerdown', (event) => {
+    dragging = true;
+    pad.setPointerCapture(event.pointerId);
+    dragTo(event);
+  });
+  pad.addEventListener('pointermove', (event) => { if (dragging) { dragTo(event); } });
+  const release = async (event) => {
+    if (!dragging) { return; }
+    dragging = false;
+    const at = dragTo(event);
+    // Only on release: a message per pointer move would flood the worker.
+    await chrome.runtime.sendMessage({ type: 'setBubble', x: at.x, y: at.y }).catch(() => {});
+    onChange({ bubbleX: at.x, bubbleY: at.y });
+  };
+  pad.addEventListener('pointerup', release);
+  pad.addEventListener('pointercancel', release);
+
+  const cameraOn = prefs.cameraOn !== false;
+  const cameraButton = el('button.pick.wide' + (cameraOn ? '' : '.off'), {
+    onclick: async () => {
+      const next = !(prefs.cameraOn !== false);
+      await chrome.runtime.sendMessage({ type: 'setCamera', on: next }).catch(() => {});
+      onChange({ cameraOn: next });
+    }
+  }, cameraOn ? '🎥 Camera on' : '🚫 Camera off');
+
   return el('div.bubblebox', {}, [
-    el('div.picklabel', { text: 'Camera bubble' }),
+    el('div.picklabel', { text: 'Camera bubble — drag to place it' }),
+    pad,
     row(CORNERS, corner, 'corner'),
-    row(SIZES, size, 'size')
+    row(SIZES, size, 'size'),
+    el('div.pickrow', {}, cameraButton)
   ]);
 }
 
@@ -213,8 +271,7 @@ async function render() {
   ].filter(Boolean)));
   if (prefs.mode !== 'camera' && prefs.camBubble !== false) {
     app.appendChild(bubbleControls(prefs, (patch) => {
-      prefs = { ...prefs, ...(patch.corner ? { bubbleCorner: patch.corner } : {}),
-        ...(patch.size ? { bubbleSize: patch.size } : {}) };
+      prefs = { ...prefs, ...normalisePatch(patch) };
       render();
     }));
   }
@@ -240,8 +297,7 @@ function renderRecording(state, prefs) {
   if (finishing) { return; }
   if (prefs && prefs.mode !== 'camera' && prefs.camBubble !== false) {
     app.appendChild(bubbleControls(prefs, (patch) => {
-      Object.assign(prefs, patch.corner ? { bubbleCorner: patch.corner } : {},
-        patch.size ? { bubbleSize: patch.size } : {});
+      Object.assign(prefs, normalisePatch(patch));
       render();
     }));
   }

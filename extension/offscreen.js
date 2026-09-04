@@ -39,7 +39,9 @@ const state = {
   frameTimer: null,
   screenSrc: null,
   camSrc: null,
-  bubble: { corner: 'bl', size: 0.24 },
+  bubble: { corner: 'bl', x: null, y: null, size: 0.24 },
+  cameraOn: true,
+  camTracks: null,
   upload: { key: null, uid: null, index: 0, sent: 0, queue: [], busy: false, failures: 0, done: false },
   settings: null,
   startedAt: 0,
@@ -274,13 +276,22 @@ const FPS = 30;
 const BUBBLE_SIZES = { s: 0.18, m: 0.24, l: 0.32 };
 const BUBBLE_MARGIN = 0.04;
 
-/** Where the camera bubble sits, from the chosen corner. Read every frame, so
- *  moving it mid-recording takes effect on the next one. */
+/**
+ * Where the camera bubble sits. Free coordinates when they have been set by
+ * dragging, otherwise the chosen corner. Read every frame, so moving it
+ * mid-recording takes effect on the next one.
+ */
 function bubbleRect(w, h) {
   const size = state.bubble.size * h;
-  const corner = state.bubble.corner || 'bl';
-  const x = corner.indexOf('l') >= 0 ? BUBBLE_MARGIN * w : w - BUBBLE_MARGIN * w - size;
-  const y = corner.indexOf('t') >= 0 ? BUBBLE_MARGIN * h : h - BUBBLE_MARGIN * h - size;
+  let x, y;
+  if (typeof state.bubble.x === 'number' && typeof state.bubble.y === 'number') {
+    x = Math.max(0, Math.min(1, state.bubble.x)) * (w - size);
+    y = Math.max(0, Math.min(1, state.bubble.y)) * (h - size);
+  } else {
+    const corner = state.bubble.corner || 'bl';
+    x = corner.indexOf('l') >= 0 ? BUBBLE_MARGIN * w : w - BUBBLE_MARGIN * w - size;
+    y = corner.indexOf('t') >= 0 ? BUBBLE_MARGIN * h : h - BUBBLE_MARGIN * h - size;
+  }
   return { size, cx: x + size / 2, cy: y + size / 2, radius: size / 2 };
 }
 
@@ -310,7 +321,7 @@ function drawLoop(mode, showBubble) {
       ctx.drawImage(base.latest, (w - dw) / 2, (h - dh) / 2, dw, dh);
     }
 
-    if (showBubble && state.camSrc && state.camSrc.latest && state.camSrc.width) {
+    if (showBubble && state.cameraOn && state.camSrc && state.camSrc.latest && state.camSrc.width) {
       const { size, cx, cy, radius } = bubbleRect(w, h);
       ctx.save();
       ctx.beginPath();
@@ -409,8 +420,11 @@ async function start(options) {
   const showBubble = mode !== 'camera' && options.camBubble !== false;
   state.bubble = {
     corner: ['tl', 'tr', 'bl', 'br'].includes(options.bubbleCorner) ? options.bubbleCorner : 'bl',
+    x: typeof options.bubbleX === 'number' ? options.bubbleX : null,
+    y: typeof options.bubbleY === 'number' ? options.bubbleY : null,
     size: BUBBLE_SIZES[options.bubbleSize] || BUBBLE_SIZES.m
   };
+  state.cameraOn = options.cameraOn !== false;
   let screenStream = null, camStream = null, micStream = null;
   // Anything asked for and not granted, so the recording does not end up
   // silently missing a voice or a face with nobody told.
@@ -434,6 +448,8 @@ async function start(options) {
       });
       state.streams.push(camStream);
       state.camSrc = await frameSource(camStream);
+      state.camTracks = camStream.getVideoTracks();
+      state.camTracks.forEach((track) => { track.enabled = state.cameraOn; });
     } catch (error) {
       // No camera is only fatal when the camera *is* the recording.
       if (mode === 'camera') { throw error; }
@@ -567,6 +583,7 @@ function cleanup() {
   if (state.monitor) { state.monitor.close().catch(() => {}); state.monitor = null; }
   if (state.screenSrc) { state.screenSrc.stop(); state.screenSrc = null; }
   if (state.camSrc) { state.camSrc.stop(); state.camSrc = null; }
+  state.camTracks = null;
 }
 
 /* --- Messages ---------------------------------------------------------------- */
@@ -580,9 +597,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'start': return start(message.options || {});
       // Moving the bubble while recording: the draw loop reads this each frame.
       case 'setBubble': {
-        if (['tl', 'tr', 'bl', 'br'].includes(message.corner)) { state.bubble.corner = message.corner; }
+        if (['tl', 'tr', 'bl', 'br'].includes(message.corner)) {
+          state.bubble.corner = message.corner;
+          state.bubble.x = null;                 // a corner overrides a drag
+          state.bubble.y = null;
+        }
+        if (typeof message.x === 'number' && typeof message.y === 'number') {
+          state.bubble.x = message.x;
+          state.bubble.y = message.y;
+        }
         if (BUBBLE_SIZES[message.size]) { state.bubble.size = BUBBLE_SIZES[message.size]; }
         return { ok: true, corner: state.bubble.corner };
+      }
+      /** Drop the camera out of the recording, or bring it back, mid-take. */
+      case 'setCamera': {
+        state.cameraOn = message.on !== false;
+        if (state.camTracks) {
+          state.camTracks.forEach((track) => { track.enabled = state.cameraOn; });
+        }
+        return { ok: true, on: state.cameraOn };
       }
       case 'stop': return stop();
       case 'cancel': return cancel();

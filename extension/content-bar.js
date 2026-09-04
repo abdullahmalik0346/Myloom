@@ -31,6 +31,20 @@
     chrome.runtime.sendMessage({ type: 'setBubble', corner: corner });
   });
 
+  // Drop the camera without ending the recording.
+  var cameraOn = true;
+  var camera = document.createElement('button');
+  camera.className = 'ml-camera';
+  camera.title = 'Turn the camera bubble off or on';
+  camera.textContent = '🎥';
+  camera.hidden = true;
+  camera.addEventListener('click', function () {
+    cameraOn = !cameraOn;
+    camera.textContent = cameraOn ? '🎥' : '🚫';
+    camera.classList.toggle('off', !cameraOn);
+    chrome.runtime.sendMessage({ type: 'setCamera', on: cameraOn });
+  });
+
   var pause = document.createElement('button');
   pause.textContent = 'Pause';
   pause.addEventListener('click', function () {
@@ -46,7 +60,7 @@
     chrome.runtime.sendMessage({ type: 'stop' });
   });
 
-  bar.append(dot, time, bubble, pause, stop, note);
+  bar.append(dot, time, camera, bubble, pause, stop, note);
   document.documentElement.appendChild(bar);
   window.__myloomBar = bar;
 
@@ -72,6 +86,12 @@
       corner = message.corner;
       bubble.textContent = GLYPHS[corner] || GLYPHS.bl;
       bubble.hidden = false;
+    }
+    if (message.type === 'camera') {
+      cameraOn = message.on !== false;
+      camera.textContent = cameraOn ? '🎥' : '🚫';
+      camera.classList.toggle('off', !cameraOn);
+      camera.hidden = false;
     }
     if (message.type === 'state') {
       bar.classList.toggle('paused', message.status === 'paused');
