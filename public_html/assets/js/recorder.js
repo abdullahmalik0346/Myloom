@@ -106,6 +106,8 @@
     });
 
     var rafId = null;
+    var frameTimer = null;
+    var lastDrawAt = 0;
     var startedAt = 0;
     var pausedTotal = 0;
     var pausedAt = 0;
@@ -259,17 +261,34 @@
 
     /* --- Compositing ------------------------------------------------------- */
 
+    /**
+     * Composite the sources, over and over.
+     *
+     * requestAnimationFrame gives a smooth picture while the page is on screen,
+     * and stops dead when it is not — hide the tab and the recording would keep
+     * its last frame for as long as you were away. A timer takes over whenever
+     * animation frames stop arriving. A backgrounded timer is slow, but a slow
+     * picture is a picture; a frozen one is not.
+     */
     function startRenderLoop() {
-      if (rafId) { return; }
-      var loop = function () {
-        rafId = requestAnimationFrame(loop);
+      if (rafId || frameTimer) { return; }
+      var paint = function () {
+        lastDrawAt = Date.now();
         drawFrame();
       };
+      var loop = function () {
+        rafId = requestAnimationFrame(loop);
+        paint();
+      };
       rafId = requestAnimationFrame(loop);
+      frameTimer = setInterval(function () {
+        if (Date.now() - lastDrawAt > 60) { paint(); }
+      }, 1000 / (options.fps || 30));
     }
 
     function stopRenderLoop() {
       if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      if (frameTimer) { clearInterval(frameTimer); frameTimer = null; }
     }
 
     function drawFrame() {

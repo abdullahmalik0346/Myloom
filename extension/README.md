@@ -74,6 +74,7 @@ The usual causes:
 | Picker opens then closes, nothing saved | Sharing was cancelled or denied | Choose a source and click **Share** |
 | *Not connected* | No site address or token saved | Options → paste the address and an `mlt_…` token, then **Save & test connection** |
 | Recording runs but the library stays empty | The server rejected the upload | Diagnostics will show the API error; check the token has not been revoked |
+| The saved video is a still picture with sound | Fixed in this version | Reload the extension at `chrome://extensions` |
 | No voice on the recording, no camera bubble | Camera/mic never allowed | Popup → **Camera & mic access** → Allow |
 | *Recording without your microphone* notice | Same, or another program holds the device | As above; diagnostics prints both permission states |
 
@@ -119,3 +120,11 @@ The service worker cannot touch media APIs, so all capture happens in an
 offscreen document and reports back by message. `chrome.storage` is not
 available to offscreen documents either, which is why the worker reads the
 settings and passes them in when starting.
+
+An offscreen document is never rendered, and two ordinary things follow from
+that. `requestAnimationFrame` never fires there — measured, 0 calls in three
+seconds against 91 from `setInterval` — so the compositing runs on a timer. And
+a `<video>` element nothing displays stops being fed, so the frames come from
+`MediaStreamTrackProcessor` reading each track directly. Each frame is copied to
+a scratch canvas and released at once: hold one back and the capturer runs out
+of buffers within seconds.

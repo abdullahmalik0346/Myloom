@@ -16,9 +16,9 @@ const state = {
   monitor: null,
   canvas: null,
   ctx: null,
-  rafId: null,
-  screenVideo: null,
-  camVideo: null,
+  frameTimer: null,
+  screenSrc: null,
+  camSrc: null,
   bubble: { x: 0.04, y: 0.72, size: 0.24 },
   upload: { key: null, uid: null, index: 0, sent: 0, queue: [], busy: false, failures: 0, done: false },
   settings: null,
@@ -50,15 +50,7 @@ function cancelled() {
   return error;
 }
 
-/**
- * Acquire the screen.
- *
- * chrome.desktopCapture is the primary path: an offscreen document has no
- * transient user activation, and getDisplayMedia() requires one, so calling it
- * here throws NotAllowedError before the user ever sees a picker. The worker
- * can open Chrome's own source picker instead and hand back a stream id.
- * getDisplayMedia stays as a fallback for builds without desktopCapture.
- */
+/** Acquire the screen: a display, a window, or a tab from Chrome's picker. */
 async function getScreen(options) {
   // getDisplayMedia works from an offscreen document and does NOT need a user
   // gesture here — measured, not assumed. Its picker also lists tabs, so
@@ -175,34 +167,118 @@ async function getTab(options) {
   return stream;
 }
 
+/**
+ * A live picture from a track, readable while the document is never rendered.
+ *
+ * A <video> element is the obvious way to hold a MediaStream, and it is the
+ * wrong one here: nothing displays it, so Chrome stops pulling frames from the
+ * screen capturer and the element sits on whichever frame it had first — sound
+ * and a still. MediaStreamTrackProcessor reads the track itself, with no
+ * rendering in the middle. The element stays as a fallback.
+ */
+async function frameSource(stream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track) { return null; }
+
+  if (typeof MediaStreamTrackProcessor === 'function' && typeof OffscreenCanvas === 'function') {
+    // Copy each frame on arrival and release it immediately. Holding even one
+    // frame back keeps a buffer out of the capturer's small pool, and screen
+    // capture stops delivering within a few seconds — a picture that moves,
+    // briefly, then stops.
+    const scratch = new OffscreenCanvas(2, 2);
+    const scratchCtx = scratch.getContext('2d');
+    const source = { latest: null, width: 0, height: 0, frames: 0, stop: null };
+    const reader = new MediaStreamTrackProcessor({ track }).readable.getReader();
+    let stopped = false;
+
+    (async () => {
+      while (!stopped) {
+        const { value, done } = await reader.read();
+        if (done) { break; }
+        try {
+          if (scratch.width !== value.displayWidth || scratch.height !== value.displayHeight) {
+            scratch.width = value.displayWidth;
+            scratch.height = value.displayHeight;
+          }
+          scratchCtx.drawImage(value, 0, 0, scratch.width, scratch.height);
+          source.width = scratch.width;
+          source.height = scratch.height;
+          source.latest = scratch;
+          source.frames++;
+        } finally {
+          value.close();
+        }
+      }
+    })().catch(() => { /* the track ended; the recording is stopping anyway */ });
+
+    source.stop = () => {
+      stopped = true;
+      reader.cancel().catch(() => {});
+      source.latest = null;
+    };
+
+    // Wait for the first frame so the canvas can be sized to it.
+    const deadline = Date.now() + 4000;
+    while (!source.latest && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    if (source.latest) { return source; }
+    source.stop();
+  }
+
+  const video = document.createElement('video');
+  video.muted = true;
+  video.srcObject = stream;
+  await video.play();
+  return {
+    get latest() { return video.videoWidth ? video : null; },
+    get width() { return video.videoWidth; },
+    get height() { return video.videoHeight; },
+    stop() { video.srcObject = null; }
+  };
+}
+
 function sizeCanvas(mode) {
   let width = 1280, height = 720;
-  const source = mode === 'camera' ? state.camVideo : state.screenVideo;   // tab shares screenVideo
-  if (source && source.videoWidth) {
-    width = source.videoWidth;
-    height = source.videoHeight;
+  const source = mode === 'camera' ? state.camSrc : state.screenSrc;   // tab shares screenSrc
+  if (source && source.width) {
+    width = source.width;
+    height = source.height;
   }
   const scale = Math.min(1, 1920 / width, 1080 / height);
   state.canvas.width = Math.round((width * scale) / 2) * 2;
   state.canvas.height = Math.round((height * scale) / 2) * 2;
 }
 
+const FPS = 30;
+
+/**
+ * Composite the sources onto the canvas, over and over.
+ *
+ * On a timer, not requestAnimationFrame. An offscreen document is never
+ * rendered, so it is never animated either: measured over three seconds in one,
+ * requestAnimationFrame fired 0 times and requestVideoFrameCallback 0 times,
+ * while setInterval fired 91. With rAF the canvas held its first frame for the
+ * whole recording — sound, and a still picture.
+ */
 function drawLoop(mode, showBubble) {
   const { ctx, canvas } = state;
   const render = () => {
-    state.rafId = requestAnimationFrame(render);
+    try { paint(); } catch (error) { /* skip this frame, keep the recording */ }
+  };
+  const paint = () => {
     const w = canvas.width, h = canvas.height;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, h);
 
-    const base = mode === 'camera' ? state.camVideo : state.screenVideo;
-    if (base && base.videoWidth) {
-      const ratio = Math.min(w / base.videoWidth, h / base.videoHeight);
-      const dw = base.videoWidth * ratio, dh = base.videoHeight * ratio;
-      ctx.drawImage(base, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    const base = mode === 'camera' ? state.camSrc : state.screenSrc;
+    if (base && base.latest && base.width) {
+      const ratio = Math.min(w / base.width, h / base.height);
+      const dw = base.width * ratio, dh = base.height * ratio;
+      ctx.drawImage(base.latest, (w - dw) / 2, (h - dh) / 2, dw, dh);
     }
 
-    if (showBubble && state.camVideo && state.camVideo.videoWidth) {
+    if (showBubble && state.camSrc && state.camSrc.latest && state.camSrc.width) {
       const size = state.bubble.size * h;
       const cx = state.bubble.x * w + size / 2;
       const cy = state.bubble.y * h + size / 2;
@@ -212,9 +288,9 @@ function drawLoop(mode, showBubble) {
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.closePath();
       ctx.clip();
-      const vw = state.camVideo.videoWidth, vh = state.camVideo.videoHeight;
+      const vw = state.camSrc.width, vh = state.camSrc.height;
       const scale = Math.max(size / vw, size / vh);
-      ctx.drawImage(state.camVideo, cx - (vw * scale) / 2, cy - (vh * scale) / 2, vw * scale, vh * scale);
+      ctx.drawImage(state.camSrc.latest, cx - (vw * scale) / 2, cy - (vh * scale) / 2, vw * scale, vh * scale);
       ctx.restore();
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -224,6 +300,7 @@ function drawLoop(mode, showBubble) {
     }
   };
   render();
+  state.frameTimer = setInterval(render, Math.round(1000 / FPS));
 }
 
 function mixAudio(micStream, screenStream) {
@@ -306,10 +383,7 @@ async function start(options) {
   if (mode !== 'camera') {
     screenStream = mode === 'tab' ? await getTab(options) : await getScreen(options);
     state.streams.push(screenStream);
-    state.screenVideo = document.createElement('video');
-    state.screenVideo.muted = true;
-    state.screenVideo.srcObject = screenStream;
-    await state.screenVideo.play();
+    state.screenSrc = await frameSource(screenStream);
     // Chrome's own "Stop sharing" bar ends the track; treat that as Stop.
     screenStream.getVideoTracks()[0].addEventListener('ended', () => {
       chrome.runtime.sendMessage({ type: 'sourceEnded' }).catch(() => {});
@@ -323,10 +397,7 @@ async function start(options) {
         audio: false
       });
       state.streams.push(camStream);
-      state.camVideo = document.createElement('video');
-      state.camVideo.muted = true;
-      state.camVideo.srcObject = camStream;
-      await state.camVideo.play();
+      state.camSrc = await frameSource(camStream);
     } catch (error) {
       // No camera is only fatal when the camera *is* the recording.
       if (mode === 'camera') { throw error; }
@@ -349,16 +420,16 @@ async function start(options) {
   state.canvas = document.createElement('canvas');
   state.ctx = state.canvas.getContext('2d');
   sizeCanvas(mode);
-  drawLoop(mode, showBubble && !!state.camVideo);
+  drawLoop(mode, showBubble && !!state.camSrc);
 
-  const videoTrack = state.canvas.captureStream(30).getVideoTracks()[0];
+  const videoTrack = state.canvas.captureStream(FPS).getVideoTracks()[0];
   const audioTrack = mixAudio(micStream, screenStream);
   const mixed = new MediaStream(audioTrack ? [videoTrack, audioTrack] : [videoTrack]);
 
   const mimeType = pickType();
   const created = await api(state.settings.siteUrl, state.settings.token, 'videos/create', {
     // Map onto the source values the server stores.
-    source: mode === 'camera' ? 'camera' : (showBubble && state.camVideo ? 'screen_camera' : 'screen'),
+    source: mode === 'camera' ? 'camera' : (showBubble && state.camSrc ? 'screen_camera' : 'screen'),
     mime: (mimeType.split(';')[0]) || 'video/webm',
     title: options.title || ('Recording ' + new Date().toLocaleString()),
     visibility: 'link'
@@ -442,13 +513,13 @@ async function cancel() {
 }
 
 function cleanup() {
-  if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
+  if (state.frameTimer) { clearInterval(state.frameTimer); state.frameTimer = null; }
   state.streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
   state.streams = [];
   if (state.audioContext) { state.audioContext.close().catch(() => {}); state.audioContext = null; }
   if (state.monitor) { state.monitor.close().catch(() => {}); state.monitor = null; }
-  if (state.screenVideo) { state.screenVideo.srcObject = null; }
-  if (state.camVideo) { state.camVideo.srcObject = null; }
+  if (state.screenSrc) { state.screenSrc.stop(); state.screenSrc = null; }
+  if (state.camSrc) { state.camSrc.stop(); state.camSrc = null; }
 }
 
 /* --- Messages ---------------------------------------------------------------- */
