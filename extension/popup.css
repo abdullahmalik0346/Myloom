@@ -59,3 +59,4 @@ button.link {
   position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
   background: #16161d; color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 12.5px;
 }
+.footlinks { display: flex; gap: 12px; padding: 2px 16px 10px; }

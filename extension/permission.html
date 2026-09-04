@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MyLoom — camera &amp; microphone</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="wrap">
+    <div class="brand"><span class="mark"></span> MyLoom</div>
+    <h1>Camera &amp; microphone</h1>
+    <p class="muted">
+      Chrome asks for these once, on a page like this one. The recorder itself runs
+      out of sight and cannot show you the prompt — which is why your microphone
+      and camera bubble were missing.
+    </p>
+
+    <div class="card">
+      <div class="perm-row" id="row-mic">
+        <span class="perm-ico">🎤</span>
+        <span class="perm-name">Microphone <span class="perm-note">your voice</span></span>
+        <span class="perm-state" id="state-mic">checking…</span>
+      </div>
+      <div class="perm-row" id="row-cam">
+        <span class="perm-ico">🎥</span>
+        <span class="perm-name">Camera <span class="perm-note">the bubble in the corner</span></span>
+        <span class="perm-state" id="state-cam">checking…</span>
+      </div>
+
+      <div class="row">
+        <button id="ask" class="btn primary">Allow camera &amp; microphone</button>
+        <button id="ask-mic" class="btn">Microphone only</button>
+      </div>
+      <p class="status" id="status"></p>
+    </div>
+
+    <p class="hint">
+      Said no by accident? Click the icon at the left of the address bar on this
+      page, set both to <em>Allow</em>, then reload it.
+    </p>
+    <p class="hint" id="done-hint" hidden>
+      All set. Close this tab, click the MyLoom icon and start recording.
+    </p>
+  </main>
+  <script type="module" src="permission.js"></script>
+</body>
+</html>

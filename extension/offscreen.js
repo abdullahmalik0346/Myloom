@@ -299,6 +299,9 @@ async function start(options) {
   const mode = options.mode === 'tab' || options.mode === 'camera' ? options.mode : 'screen';
   const showBubble = mode !== 'camera' && options.camBubble !== false;
   let screenStream = null, camStream = null, micStream = null;
+  // Anything asked for and not granted, so the recording does not end up
+  // silently missing a voice or a face with nobody told.
+  const missing = [];
 
   if (mode !== 'camera') {
     screenStream = mode === 'tab' ? await getTab(options) : await getScreen(options);
@@ -327,6 +330,7 @@ async function start(options) {
     } catch (error) {
       // No camera is only fatal when the camera *is* the recording.
       if (mode === 'camera') { throw error; }
+      missing.push(error.name === 'NotAllowedError' ? 'camera (not allowed)' : 'camera');
     }
   }
 
@@ -336,7 +340,10 @@ async function start(options) {
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
       state.streams.push(micStream);
-    } catch (e) { /* carry on without a microphone */ }
+    } catch (error) {
+      // Carry on — a silent recording beats no recording — but say so.
+      missing.push(error.name === 'NotAllowedError' ? 'microphone (not allowed)' : 'microphone');
+    }
   }
 
   state.canvas = document.createElement('canvas');
@@ -376,7 +383,7 @@ async function start(options) {
 
   state.startedAt = performance.now();
   state.pausedTotal = 0;
-  return { ok: true, uid: created.uid, shareUrl: created.share_url };
+  return { ok: true, uid: created.uid, shareUrl: created.share_url, missing };
 }
 
 function elapsed() {

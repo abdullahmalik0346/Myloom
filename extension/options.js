@@ -54,6 +54,33 @@ document.getElementById('forget').addEventListener('click', async () => {
 
 /* --- Diagnostics ---------------------------------------------------------- */
 
+/**
+ * Where camera and microphone stand. "prompt" here is the usual reason a
+ * recording comes out with no voice: the offscreen recorder cannot ask.
+ */
+async function mediaPermissionLines() {
+  const lines = [];
+  for (const name of ['microphone', 'camera']) {
+    const state = await navigator.permissions.query({ name })
+      .then((result) => result.state)
+      .catch((error) => 'unknown (' + error.name + ')');
+    lines.push(name + ' permission: ' + state + (state === 'prompt' ? ' — never asked, open "Camera & microphone"' : ''));
+  }
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    lines.push('devices: ' + devices.filter((d) => d.kind === 'audioinput').length + ' mic, '
+      + devices.filter((d) => d.kind === 'videoinput').length + ' camera');
+  } catch (error) {
+    lines.push('devices: could not enumerate — ' + error.message);
+  }
+  return lines.join('\n');
+}
+
+document.getElementById('open-permissions').addEventListener('click', (event) => {
+  event.preventDefault();
+  chrome.tabs.create({ url: chrome.runtime.getURL('permission.html') });
+});
+
 const diagnoseButton = document.getElementById('diagnose');
 const report = document.getElementById('report');
 const copyButton = document.getElementById('copy-report');
@@ -65,7 +92,9 @@ diagnoseButton.addEventListener('click', async () => {
   report.textContent = 'Running…';
   try {
     const result = await chrome.runtime.sendMessage({ type: 'diagnose' });
-    report.textContent = (result && result.report) || 'No report came back.';
+    // The worker cannot see media permissions; this page can.
+    report.textContent = ((result && result.report) || 'No report came back.')
+      + '\n' + await mediaPermissionLines();
     copyButton.hidden = false;
   } catch (error) {
     report.textContent = 'Diagnostics failed: ' + error.message +

@@ -124,6 +124,18 @@ async function removeBar() {
  * A capture error almost always arrives after the popup has closed, so without
  * this the whole thing looks like nothing happened at all.
  */
+/** A passing note — something worth knowing that did not stop the recording. */
+function notify(title, message) {
+  if (!chrome.notifications || !chrome.notifications.create) { return; }
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icons/icon-128.png',
+    title: String(title).slice(0, 120),
+    message: String(message).slice(0, 240),
+    priority: 1
+  });
+}
+
 async function reportFailure(message) {
   await chrome.storage.local.set({ lastError: { message: String(message), at: Date.now() } });
   if (chrome.notifications && chrome.notifications.create) {
@@ -178,6 +190,12 @@ async function startRecording(options) {
     // Closing the picker is a choice, not a fault worth shouting about.
     if (!/cancelled/i.test(message)) { await reportFailure(message); }
     throw new Error(message);
+  }
+
+  // Started, but perhaps without everything that was asked for.
+  if (result.missing && result.missing.length) {
+    notify('Recording without your ' + result.missing.join(' and '),
+      'Open the MyLoom popup and click "Camera & mic access" to fix this.');
   }
 
   state.status = 'recording';

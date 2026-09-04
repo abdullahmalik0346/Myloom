@@ -26,14 +26,28 @@ The token is stored only in your browser, and it is the only credential the
 extension holds — it never sees your password. Revoke it any time from the same
 Settings page and the extension stops working immediately.
 
+## Allow the camera and microphone — once
+
+The first time you press **Start recording** a tab opens asking for your camera
+and microphone. Click **Allow**, close the tab, and record. It is asked once and
+remembered.
+
+This is not a formality. The recorder runs in an offscreen document, and Chrome
+will not show a permission prompt there — `getUserMedia()` returns
+*NotAllowedError: Permission dismissed* immediately. A recording made without
+the grant comes out with **no voice and no camera bubble**, which is why the
+prompt has a page of its own. You can reopen it any time from **Camera & mic
+access** at the bottom of the popup.
+
 ## Using it
 
 - Click the toolbar icon on any page, pick a mode, and press **Start recording**.
   - **Screen** — a display, a window or any tab, chosen in Chrome's picker.
   - **Tab** — the tab you opened the popup over, with its audio and no picker.
   - **Camera** — a talking-head video with no screen.
-  - **Camera bubble** overlays your webcam in the corner, and works with either
-    of the screen modes.
+  - **Camera bubble (screen + camera)** overlays your webcam in the corner, and
+    works with either of the screen modes. There is no separate "screen +
+    camera" mode: tick the box on **Screen** or **Tab**.
 - A bar appears at the bottom of the page with a timer, **Pause** and
   **Stop & save**. It follows you as you switch tabs.
 - <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> starts and stops without opening
@@ -60,6 +74,8 @@ The usual causes:
 | Picker opens then closes, nothing saved | Sharing was cancelled or denied | Choose a source and click **Share** |
 | *Not connected* | No site address or token saved | Options → paste the address and an `mlt_…` token, then **Save & test connection** |
 | Recording runs but the library stays empty | The server rejected the upload | Diagnostics will show the API error; check the token has not been revoked |
+| No voice on the recording, no camera bubble | Camera/mic never allowed | Popup → **Camera & mic access** → Allow |
+| *Recording without your microphone* notice | Same, or another program holds the device | As above; diagnostics prints both permission states |
 
 ## Notes and limits
 

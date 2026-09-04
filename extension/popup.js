@@ -38,6 +38,29 @@ function el(tag, attrs, children) {
   return node;
 }
 
+/**
+ * Chrome will not show a camera or microphone prompt to the offscreen document
+ * the recorder runs in, so a first recording would silently have neither. Find
+ * out what is still unasked before starting, and send them somewhere a prompt
+ * can actually appear.
+ */
+async function unaskedPermissions(prefs) {
+  const wanted = [];
+  if (prefs.mic !== false) { wanted.push('microphone'); }
+  if (prefs.mode === 'camera' || (prefs.mode !== 'camera' && prefs.camBubble !== false)) {
+    wanted.push('camera');
+  }
+  const states = await Promise.all(wanted.map((name) => navigator.permissions
+    .query({ name })
+    .then((result) => result.state)
+    .catch(() => 'granted')));   // a browser that cannot say should not block
+
+  return {
+    unasked: wanted.filter((_, i) => states[i] === 'prompt'),
+    blocked: wanted.filter((_, i) => states[i] === 'denied')
+  };
+}
+
 function header() {
   return el('div.head', {}, [el('div.mark'), el('span.title', { text: 'MyLoom' })]);
 }
@@ -122,6 +145,19 @@ async function render() {
       startButton.disabled = true;
       startButton.textContent = 'Starting…';
       error.textContent = '';
+
+      const { unasked, blocked } = await unaskedPermissions(prefs);
+      if (unasked.length) {
+        chrome.tabs.create({ url: chrome.runtime.getURL('permission.html?ask=1') });
+        window.close();
+        return;
+      }
+      if (blocked.length) {
+        // Blocked on purpose, perhaps. Say what will be missing and carry on.
+        error.textContent = 'Recording without your ' + blocked.join(' or ')
+          + ' — Chrome has it blocked for this extension.';
+      }
+
       const result = await chrome.runtime.sendMessage({ type: 'start', options: prefs })
         .catch((e) => ({ ok: false, error: e.message }));
       if (result && result.ok) { window.close(); return; }
@@ -133,13 +169,19 @@ async function render() {
 
   app.appendChild(modeRow);
   app.appendChild(el('div.opts', {}, [
-    prefs.mode !== 'camera' ? toggle('camBubble', 'Camera bubble') : null,
+    // Named for what people look for: this is the screen-and-camera mode.
+    prefs.mode !== 'camera' ? toggle('camBubble', 'Camera bubble (screen + camera)') : null,
     toggle('mic', 'Microphone'),
     toggle('systemAudio', prefs.mode === 'tab' ? 'Tab audio' : 'System audio')
   ].filter(Boolean)));
   app.appendChild(el('div.actions', {}, [
     startButton,
     el('button.btn', { onclick: () => chrome.tabs.create({ url: settings.siteUrl }) }, 'Open my library')
+  ]));
+  app.appendChild(el('div.footlinks', {}, [
+    el('button.link', {
+      onclick: () => chrome.tabs.create({ url: chrome.runtime.getURL('permission.html') })
+    }, 'Camera & mic access')
   ]));
   app.appendChild(error);
 }
