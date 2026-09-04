@@ -48,6 +48,10 @@ access** at the bottom of the popup.
   - **Camera bubble (screen + camera)** overlays your webcam in the corner, and
     works with either of the screen modes. There is no separate "screen +
     camera" mode: tick the box on **Screen** or **Tab**.
+- **Move the bubble** to any of the four corners, and size it S/M/L, from the
+  popup. It can be moved mid-recording — from the popup, or with the corner
+  button on the recording bar, which cycles through the corners so you can get
+  it out of the way of whatever you are pointing at without leaving the page.
 - A bar appears at the bottom of the page with a timer, **Pause** and
   **Stop & save**. It follows you as you switch tabs.
 - <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> starts and stops without opening

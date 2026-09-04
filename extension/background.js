@@ -7,7 +7,7 @@
    is delegated to offscreen.js and reported back by message.
    ========================================================================== */
 
-import { loadSettings } from './config.js';
+import { loadSettings, saveSettings } from './config.js';
 
 const OFFSCREEN_PATH = 'offscreen.html';
 
@@ -205,6 +205,7 @@ async function startRecording(options) {
   startTicking();
   await injectBar(state.tabId);
   broadcastToBar({ type: 'state', status: 'recording' });
+  if (result.bubble) { broadcastToBar({ type: 'bubble', corner: result.bubble }); }
   return result;
 }
 
@@ -275,6 +276,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     stop: async () => stopRecording(),
     pause: async () => togglePause(),
     cancel: async () => cancelRecording(),
+    /**
+     * Move the camera bubble, before or during a recording. Saved either way,
+     * so the next recording starts where the last one ended up.
+     */
+    setBubble: async () => {
+      const settings = await loadSettings();
+      const prefs = { ...settings.prefs };
+      if (message.corner) { prefs.bubbleCorner = message.corner; }
+      if (message.size) { prefs.bubbleSize = message.size; }
+      await saveSettings({ prefs });
+      if (state.status === 'recording' || state.status === 'paused') {
+        await askOffscreen({ type: 'setBubble', corner: message.corner, size: message.size })
+          .catch(() => { /* the recording is ending; the saved value still stands */ });
+      }
+      broadcastToBar({ type: 'bubble', corner: prefs.bubbleCorner });
+      return { ok: true, corner: prefs.bubbleCorner, size: prefs.bubbleSize };
+    },
     // Relayed by the offscreen document when the user stops sharing from
     // Chrome's own bar, so the extension does not sit there thinking it is live.
     sourceEnded: async () => stopRecording(),

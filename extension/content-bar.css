@@ -24,3 +24,4 @@
 #myloom-bar button.ml-stop { background: #e5484d; }
 #myloom-bar button.ml-stop:hover { background: #f05a5f; }
 @media (prefers-reduced-motion: reduce) { #myloom-bar .ml-dot { animation: none; } }
+#myloom-bar button.ml-bubble { padding: 6px 9px; font-size: 12px; line-height: 1; }

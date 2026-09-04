@@ -19,7 +19,7 @@ const state = {
   frameTimer: null,
   screenSrc: null,
   camSrc: null,
-  bubble: { x: 0.04, y: 0.72, size: 0.24 },
+  bubble: { corner: 'bl', size: 0.24 },
   upload: { key: null, uid: null, index: 0, sent: 0, queue: [], busy: false, failures: 0, done: false },
   settings: null,
   startedAt: 0,
@@ -251,6 +251,18 @@ function sizeCanvas(mode) {
 }
 
 const FPS = 30;
+const BUBBLE_SIZES = { s: 0.18, m: 0.24, l: 0.32 };
+const BUBBLE_MARGIN = 0.04;
+
+/** Where the camera bubble sits, from the chosen corner. Read every frame, so
+ *  moving it mid-recording takes effect on the next one. */
+function bubbleRect(w, h) {
+  const size = state.bubble.size * h;
+  const corner = state.bubble.corner || 'bl';
+  const x = corner.indexOf('l') >= 0 ? BUBBLE_MARGIN * w : w - BUBBLE_MARGIN * w - size;
+  const y = corner.indexOf('t') >= 0 ? BUBBLE_MARGIN * h : h - BUBBLE_MARGIN * h - size;
+  return { size, cx: x + size / 2, cy: y + size / 2, radius: size / 2 };
+}
 
 /**
  * Composite the sources onto the canvas, over and over.
@@ -279,10 +291,7 @@ function drawLoop(mode, showBubble) {
     }
 
     if (showBubble && state.camSrc && state.camSrc.latest && state.camSrc.width) {
-      const size = state.bubble.size * h;
-      const cx = state.bubble.x * w + size / 2;
-      const cy = state.bubble.y * h + size / 2;
-      const radius = size / 2;
+      const { size, cx, cy, radius } = bubbleRect(w, h);
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -375,6 +384,10 @@ async function start(options) {
   // The camera bubble is independent, so it can sit over a screen or a tab.
   const mode = options.mode === 'tab' || options.mode === 'camera' ? options.mode : 'screen';
   const showBubble = mode !== 'camera' && options.camBubble !== false;
+  state.bubble = {
+    corner: ['tl', 'tr', 'bl', 'br'].includes(options.bubbleCorner) ? options.bubbleCorner : 'bl',
+    size: BUBBLE_SIZES[options.bubbleSize] || BUBBLE_SIZES.m
+  };
   let screenStream = null, camStream = null, micStream = null;
   // Anything asked for and not granted, so the recording does not end up
   // silently missing a voice or a face with nobody told.
@@ -454,7 +467,14 @@ async function start(options) {
 
   state.startedAt = performance.now();
   state.pausedTotal = 0;
-  return { ok: true, uid: created.uid, shareUrl: created.share_url, missing };
+  return {
+    ok: true,
+    uid: created.uid,
+    shareUrl: created.share_url,
+    missing,
+    // Lets the page bar show a corner button only when there is a bubble to move.
+    bubble: showBubble && state.camSrc ? state.bubble.corner : null
+  };
 }
 
 function elapsed() {
@@ -531,6 +551,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.type) {
       case 'ping': return { ok: true };
       case 'start': return start(message.options || {});
+      // Moving the bubble while recording: the draw loop reads this each frame.
+      case 'setBubble': {
+        if (['tl', 'tr', 'bl', 'br'].includes(message.corner)) { state.bubble.corner = message.corner; }
+        if (BUBBLE_SIZES[message.size]) { state.bubble.size = BUBBLE_SIZES[message.size]; }
+        return { ok: true, corner: state.bubble.corner };
+      }
       case 'stop': return stop();
       case 'cancel': return cancel();
       case 'pause':

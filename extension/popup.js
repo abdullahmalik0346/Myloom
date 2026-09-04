@@ -61,6 +61,43 @@ async function unaskedPermissions(prefs) {
   };
 }
 
+const CORNERS = [
+  { key: 'tl', glyph: '◤', label: 'Top left' },
+  { key: 'tr', glyph: '◥', label: 'Top right' },
+  { key: 'bl', glyph: '◣', label: 'Bottom left' },
+  { key: 'br', glyph: '◢', label: 'Bottom right' }
+];
+const SIZES = [{ key: 's', label: 'S' }, { key: 'm', label: 'M' }, { key: 'l', label: 'L' }];
+
+/**
+ * Where the camera bubble sits, and how big. Works mid-recording too — the
+ * recorder reads the placement on every frame — which is the only way to move
+ * it once you have left this tab.
+ */
+function bubbleControls(prefs, onChange) {
+  const corner = prefs.bubbleCorner || 'bl';
+  const size = prefs.bubbleSize || 'm';
+
+  const row = (items, current, key) => el('div.pickrow', {}, items.map((item) => el(
+    'button.pick' + (item.key === current ? '.on' : ''),
+    {
+      title: item.label || item.key,
+      onclick: async () => {
+        const patch = { [key]: item.key };
+        await chrome.runtime.sendMessage({ type: 'setBubble', ...patch }).catch(() => {});
+        onChange(patch);
+      }
+    },
+    item.glyph || item.label
+  )));
+
+  return el('div.bubblebox', {}, [
+    el('div.picklabel', { text: 'Camera bubble' }),
+    row(CORNERS, corner, 'corner'),
+    row(SIZES, size, 'size')
+  ]);
+}
+
 function header() {
   return el('div.head', {}, [el('div.mark'), el('span.title', { text: 'MyLoom' })]);
 }
@@ -115,7 +152,7 @@ async function render() {
   }
 
   if (state.status === 'recording' || state.status === 'paused' || state.status === 'finishing') {
-    return renderRecording(state);
+    return renderRecording(state, normaliseMode(settings.prefs));
   }
 
   let prefs = normaliseMode(settings.prefs);
@@ -174,6 +211,13 @@ async function render() {
     toggle('mic', 'Microphone'),
     toggle('systemAudio', prefs.mode === 'tab' ? 'Tab audio' : 'System audio')
   ].filter(Boolean)));
+  if (prefs.mode !== 'camera' && prefs.camBubble !== false) {
+    app.appendChild(bubbleControls(prefs, (patch) => {
+      prefs = { ...prefs, ...(patch.corner ? { bubbleCorner: patch.corner } : {}),
+        ...(patch.size ? { bubbleSize: patch.size } : {}) };
+      render();
+    }));
+  }
   app.appendChild(el('div.actions', {}, [
     startButton,
     el('button.btn', { onclick: () => chrome.tabs.create({ url: settings.siteUrl }) }, 'Open my library')
@@ -186,7 +230,7 @@ async function render() {
   app.appendChild(error);
 }
 
-function renderRecording(state) {
+function renderRecording(state, prefs) {
   const finishing = state.status === 'finishing';
   app.appendChild(el('div.status', {}, [
     finishing ? null : el('span.dot'),
@@ -194,6 +238,13 @@ function renderRecording(state) {
     el('span.muted.small', { text: formatSeconds(state.seconds || 0) })
   ]));
   if (finishing) { return; }
+  if (prefs && prefs.mode !== 'camera' && prefs.camBubble !== false) {
+    app.appendChild(bubbleControls(prefs, (patch) => {
+      Object.assign(prefs, patch.corner ? { bubbleCorner: patch.corner } : {},
+        patch.size ? { bubbleSize: patch.size } : {});
+      render();
+    }));
+  }
   app.appendChild(el('div.actions', {}, [
     el('button.btn.danger', {
       onclick: async () => { await chrome.runtime.sendMessage({ type: 'stop' }); window.close(); }

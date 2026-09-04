@@ -60,3 +60,15 @@ button.link {
   background: #16161d; color: #fff; padding: 6px 12px; border-radius: 8px; font-size: 12.5px;
 }
 .footlinks { display: flex; gap: 12px; padding: 2px 16px 10px; }
+
+/* Camera bubble placement: corners, then size. */
+.bubblebox { padding: 2px 16px 10px; }
+.picklabel { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+.pickrow { display: flex; gap: 6px; margin-bottom: 6px; }
+.pickrow:last-child { margin-bottom: 0; }
+.pick {
+  flex: 1; padding: 6px 0; border-radius: 8px; cursor: pointer; font: inherit; font-size: 13px;
+  background: var(--soft, rgba(127, 127, 140, .12)); border: 1px solid transparent; color: inherit;
+}
+.pick:hover { border-color: rgba(127, 127, 140, .45); }
+.pick.on { background: var(--accent); border-color: var(--accent); color: #fff; }

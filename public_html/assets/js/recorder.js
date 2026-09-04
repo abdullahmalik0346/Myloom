@@ -375,6 +375,18 @@
       bubble.size = Math.max(0.1, Math.min(0.45, size));
     };
     self.getBubble = function () { return bubble; };
+
+    /** Drop the bubble into a corner: 'tl', 'tr', 'bl' or 'br'. */
+    self.setBubbleCorner = function (corner) {
+      // x is a fraction of the width, y of the height, so the bubble's width
+      // has to be converted before it can be subtracted from the right edge.
+      var margin = 0.04;
+      var wide = bubble.size * (canvas.height / canvas.width);
+      bubble.x = corner.indexOf('l') >= 0 ? margin : 1 - margin - wide;
+      bubble.y = corner.indexOf('t') >= 0 ? margin : 1 - margin - bubble.size;
+      self.bubbleCorner = corner;
+    };
+    self.bubbleCorner = 'bl';
     self.previewCanvas = canvas;
 
     /* --- Audio mixing ------------------------------------------------------ */

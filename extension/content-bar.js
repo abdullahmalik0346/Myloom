@@ -15,6 +15,22 @@
   var note = document.createElement('span');
   note.className = 'ml-note';
 
+  // Move the camera bubble out of the way of whatever you are demonstrating,
+  // without leaving the page you are recording.
+  var CORNERS = ['bl', 'br', 'tr', 'tl'];
+  var GLYPHS = { tl: '◤', tr: '◥', bl: '◣', br: '◢' };
+  var corner = 'bl';
+  var bubble = document.createElement('button');
+  bubble.className = 'ml-bubble';
+  bubble.title = 'Move the camera bubble to another corner';
+  bubble.textContent = GLYPHS[corner];
+  bubble.hidden = true;
+  bubble.addEventListener('click', function () {
+    corner = CORNERS[(CORNERS.indexOf(corner) + 1) % CORNERS.length];
+    bubble.textContent = GLYPHS[corner];
+    chrome.runtime.sendMessage({ type: 'setBubble', corner: corner });
+  });
+
   var pause = document.createElement('button');
   pause.textContent = 'Pause';
   pause.addEventListener('click', function () {
@@ -30,7 +46,7 @@
     chrome.runtime.sendMessage({ type: 'stop' });
   });
 
-  bar.append(dot, time, pause, stop, note);
+  bar.append(dot, time, bubble, pause, stop, note);
   document.documentElement.appendChild(bar);
   window.__myloomBar = bar;
 
@@ -51,6 +67,11 @@
       var mb = message.sent / (1024 * 1024);
       note.textContent = 'Uploaded ' + (mb < 1 ? Math.round(message.sent / 1024) + ' KB' : mb.toFixed(1) + ' MB') +
         (message.pending ? ' · ' + message.pending + ' queued' : '');
+    }
+    if (message.type === 'bubble' && message.corner) {
+      corner = message.corner;
+      bubble.textContent = GLYPHS[corner] || GLYPHS.bl;
+      bubble.hidden = false;
     }
     if (message.type === 'state') {
       bar.classList.toggle('paused', message.status === 'paused');

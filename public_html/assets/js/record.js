@@ -197,6 +197,27 @@
       oninput: function (event) { if (recorder) { recorder.setBubbleSize(Number(event.target.value) / 100); } }
     });
 
+    // Dragging works on the preview, but only while you are looking at it. The
+    // corner buttons put the bubble somewhere definite, mid-recording included.
+    var corners = [
+      { key: 'tl', glyph: '◤', title: 'Bubble top left' },
+      { key: 'tr', glyph: '◥', title: 'Bubble top right' },
+      { key: 'bl', glyph: '◣', title: 'Bubble bottom left' },
+      { key: 'br', glyph: '◢', title: 'Bubble bottom right' }
+    ];
+    var cornerRow = el('div.corner-row', {}, corners.map(function (item) {
+      return el('button.btn.sm' + (item.key === 'bl' ? '.active' : ''), {
+        type: 'button', title: item.title,
+        onclick: function () {
+          if (!recorder) { return; }
+          recorder.setBubbleCorner(item.key);
+          ML.$$('button', cornerRow).forEach(function (node, index) {
+            node.classList.toggle('active', corners[index].key === item.key);
+          });
+        }
+      }, item.glyph);
+    }));
+
     /* --- Controls ---------------------------------------------------------- */
 
     var setupBtn = el('button.btn.primary', { type: 'button', onclick: function () { setup(); } }, 'Set up sources');
@@ -211,6 +232,7 @@
       el('span.grow'),
       penToggle, palette,
       el('label.tiny.muted.row', { style: { gap: '6px' } }, ['Bubble', bubbleSize]),
+      cornerRow,
       timerLabel
     ]);
 
